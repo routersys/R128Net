@@ -1,0 +1,107 @@
+name: 性能計測
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "各段の実行回数"
+        required: true
+        type: string
+        default: "20"
+      commit_result:
+        description: "計測結果を README へ反映してコミットする"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  benchmark:
+    name: 原典CとNativeAOTを同一環境で比較
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: .NET SDK をセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: NuGet パッケージをキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: 原典 libebur128 の取得結果をキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: reference/ebur128-src
+          key: ebur128-src-${{ hashFiles('reference/build.bat') }}
+          restore-keys: ebur128-src-
+
+      - name: 参照ハーネスをビルド
+        shell: cmd
+        run: reference\build.bat
+
+      - name: 実行例を NativeAOT で発行
+        shell: cmd
+        run: publish-aot.bat
+
+      - name: 計測を実行して README を更新
+        run: |
+          AOT=$(find R128Net.Examples/bin -name R128Net.Examples.exe -path "*publish*" -print -quit)
+          if [ -z "${AOT}" ]; then
+            echo "NativeAOT の実行ファイルが見つかりません"
+            exit 1
+          fi
+          echo "計測対象: ${AOT}"
+          python .github/scripts/benchmark.py \
+            --native reference/r128ref.exe \
+            --aot "${AOT}" \
+            --runs "${{ inputs.runs || '20' }}" \
+            --readme README.md \
+            --readme-ja README.ja.md \
+            --commit "${{ github.sha }}"
+
+      - name: 計測結果をジョブ概要へ出力
+        run: sed -n '/BENCHMARK:CI:BEGIN/,/BENCHMARK:CI:END/p' README.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 更新した README をアーティファクトとして保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-readme
+          path: |
+            README.md
+            README.ja.md
+          retention-days: 90
+
+      - name: 計測結果を main へコミット
+        if: ${{ github.event_name == 'release' || inputs.commit_result }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet README.md README.ja.md; then
+            echo "計測結果に変化がないためコミットしません"
+            exit 0
+          fi
+          git add README.md README.ja.md
+          git commit -m "CIの計測結果で性能の節を更新"
+          git push origin HEAD:main
