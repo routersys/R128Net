@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# reference build artifacts
+reference/ebur128-src/
+reference/obj/
+reference/r128ref.exe
