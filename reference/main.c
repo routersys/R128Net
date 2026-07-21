@@ -458,6 +458,82 @@ static void DumpLoudness(const char *suffix, unsigned int channels,
   free(input);
 }
 
+static const double kExtremeAmplitudes[10] = {
+  1.0, 1e-20, 1e-40, 1e-310, 0.0, 1.0, 1e-45, 5e-324, 0.5, 1e-300
+};
+
+static void DumpExtreme(void) {
+  const unsigned int channels = 2;
+  const unsigned long fs = 48000;
+  const int seconds = 10;
+  const size_t chunkFrames = 4801;
+  size_t frames = (size_t)fs * (size_t)seconds;
+
+  double *input = (double *)malloc(sizeof(double) * frames * channels);
+  ResetSeed();
+  for (size_t i = 0; i < frames; ++i) {
+    double amplitude = kExtremeAmplitudes[(i / (size_t)fs) % 10];
+    for (unsigned int c = 0; c < channels; ++c) {
+      input[i * channels + c] = (NextUnit() * 2.0 - 1.0) * amplitude;
+    }
+  }
+
+  ebur128_state *st = ebur128_init(channels, fs,
+      EBUR128_MODE_I | EBUR128_MODE_LRA | EBUR128_MODE_TRUE_PEAK);
+  if (st == NULL) {
+    printf("ebur128_init failed for the extreme dump\n");
+    exit(1);
+  }
+
+  Write2D("extreme_head", input, 4800, (int)channels);
+
+  for (size_t offset = 0; offset < frames; offset += chunkFrames) {
+    size_t take = frames - offset;
+    if (take > chunkFrames) {
+      take = chunkFrames;
+    }
+    ebur128_add_frames_double(st, input + offset * channels, take);
+  }
+
+  double results[6];
+  ebur128_loudness_global(st, &results[0]);
+  ebur128_loudness_momentary(st, &results[1]);
+  ebur128_loudness_shortterm(st, &results[2]);
+  ebur128_loudness_range(st, &results[3]);
+  ebur128_relative_threshold(st, &results[4]);
+  ebur128_loudness_window(st, 400, &results[5]);
+  Write1D("extreme_results", results, 6);
+
+  double *peaks = (double *)malloc(sizeof(double) * channels * 4);
+  for (unsigned int c = 0; c < channels; ++c) {
+    double value;
+    ebur128_sample_peak(st, c, &value);
+    peaks[c * 4] = value;
+    ebur128_true_peak(st, c, &value);
+    peaks[c * 4 + 1] = value;
+    ebur128_prev_sample_peak(st, c, &value);
+    peaks[c * 4 + 2] = value;
+    ebur128_prev_true_peak(st, c, &value);
+    peaks[c * 4 + 3] = value;
+  }
+  Write2D("extreme_peaks", peaks, (int)channels, 4);
+  free(peaks);
+
+  DumpBlockList("extreme_blocks", &st->d->block_list);
+  DumpBlockList("extreme_shortterm", &st->d->short_term_block_list);
+
+  double state[10];
+  for (unsigned int c = 0; c < channels; ++c) {
+    for (int j = 0; j < FILTER_STATE_SIZE; ++j) {
+      state[c * FILTER_STATE_SIZE + j] = st->d->v[c][j];
+    }
+  }
+  Write2D("extreme_state", state, (int)channels, FILTER_STATE_SIZE);
+
+  ebur128_destroy(&st);
+  free(input);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("usage: r128ref <output directory>\n");
@@ -492,6 +568,8 @@ int main(int argc, char *argv[]) {
     DumpLoudness("rate44100", 2, 44100, 20, full, NULL, 4801);
     DumpLoudness("rate96000", 2, 96000, 12, full, NULL, 4801);
   }
+
+  DumpExtreme();
 
   printf("reference data written to %s\n", g_outdir);
   return 0;
