@@ -30,16 +30,6 @@ internal static class Denormal
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Vector128<double> Flush(Vector128<double> value)
-    {
-        Vector128<long> bits = value.AsInt64();
-        Vector128<long> tiny = Vector128.LessThan(
-            bits & Vector128.Create(MagnitudeMask), Vector128.Create(SmallestNormal));
-        return Vector128.ConditionalSelect(
-            tiny, bits & Vector128.Create(long.MinValue), bits).AsDouble();
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Vector256<double> Flush(Vector256<double> value)
     {
         Vector256<long> bits = value.AsInt64();
@@ -47,15 +37,5 @@ internal static class Denormal
             bits & Vector256.Create(MagnitudeMask), Vector256.Create(SmallestNormal));
         return Vector256.ConditionalSelect(
             tiny, bits & Vector256.Create(long.MinValue), bits).AsDouble();
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Vector512<double> Flush(Vector512<double> value)
-    {
-        Vector512<long> bits = value.AsInt64();
-        Vector512<long> tiny = Vector512.LessThan(
-            bits & Vector512.Create(MagnitudeMask), Vector512.Create(SmallestNormal));
-        return Vector512.ConditionalSelect(
-            tiny, bits & Vector512.Create(long.MinValue), bits).AsDouble();
     }
 }
