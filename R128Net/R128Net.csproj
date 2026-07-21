@@ -1,9 +1,50 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>R128Net</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>routersys</Authors>
+    <Product>R128Net</Product>
+    <Title>R128Net</Title>
+    <Description>A complete C# port of libebur128 for .NET 10. EBU R128 and ITU-R BS.1770 loudness measurement covering momentary, short term and integrated loudness, loudness range, sample peak and true peak. Measurement runs without a managed allocation and the library is annotated for Native AOT. Every stage is compared against the original C built with MSVC.</Description>
+    <Copyright>Copyright (c) 2026 routersys</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/routersys/R128Net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/routersys/R128Net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>ebur128;r128;loudness;lufs;lra;true-peak;bs1770;audio;dsp;native-aot;zero-allocation</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReleaseNotes>See https://github.com/routersys/R128Net/releases</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\.github\LICENSE\libebur128.txt" Pack="true" PackagePath="THIRD-PARTY-NOTICES\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="R128Net.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\R128Net.SourceGenerator\R128Net.SourceGenerator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
 
 </Project>
