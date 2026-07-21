@@ -33,7 +33,7 @@ internal unsafe partial struct Interpolator
         state.Indices = (int*)allocator.Allocate(factor * delay, (nuint)sizeof(int));
         state.Coefficients = (double*)allocator.Allocate(factor * delay, sizeof(double));
         state.PackedCoefficients = (double*)allocator.Allocate(4 * delay, sizeof(double));
-        state.History = (float*)allocator.Allocate(channels * delay, sizeof(float));
+        state.History = (float*)allocator.Allocate(2 * channels * delay, sizeof(float));
     }
 
     public void Initialize(int taps, int factor)
@@ -119,7 +119,7 @@ internal unsafe partial struct Interpolator
     public void Reset(int channels)
     {
         Position = 0;
-        for (int i = 0; i < channels * Delay; ++i)
+        for (int i = 0; i < 2 * channels * Delay; ++i)
         {
             History[i] = 0.0f;
         }
@@ -158,43 +158,91 @@ internal unsafe partial struct Interpolator
         int zeroIndex = Indices[0];
         double zeroCoefficient = Coefficients[0];
         int position = Position;
+        int frame = 0;
 
-        for (int frame = 0; frame < frames; ++frame)
+        for (; frame + 2 <= frames; frame += 2)
         {
+            int first = position;
+            int second = position + 1 == delay ? 0 : position + 1;
+            int firstBase = first + delay;
+            int secondBase = second + delay;
+
             for (int channel = 0; channel < channels; ++channel)
             {
                 float* line = History + channel;
-                line[position * channels] = Denormal.Flush(
-                    (float)Denormal.Flush(TFormat.ToUnit(source[(frame * channels) + channel])));
+
+                float head = Denormal.Flush((float)Denormal.Flush(
+                    TFormat.ToUnit(source[(frame * channels) + channel])));
+                float next = Denormal.Flush((float)Denormal.Flush(
+                    TFormat.ToUnit(source[((frame + 1) * channels) + channel])));
+
+                line[first * channels] = head;
+                line[firstBase * channels] = head;
+                line[second * channels] = next;
+                line[secondBase * channels] = next;
 
                 double peak = peaks[channel];
 
-                int single = position - zeroIndex;
-                if (single < 0)
+                peak = Widen(Denormal.Flush(Denormal.Flush(
+                    line[(firstBase - zeroIndex) * channels] * zeroCoefficient)), peak);
+                peak = Widen(Denormal.Flush(Denormal.Flush(
+                    line[(secondBase - zeroIndex) * channels] * zeroCoefficient)), peak);
+
+                Vector256<double> headAccumulator = Vector256<double>.Zero;
+                Vector256<double> nextAccumulator = Vector256<double>.Zero;
+
+                for (int t = 0; t < width; ++t)
                 {
-                    single += delay;
+                    Vector256<double> coefficients =
+                        Vector256.Load(PackedCoefficients + (t * 4));
+
+                    headAccumulator = Denormal.Flush(headAccumulator + Denormal.Flush(
+                        Vector256.Create((double)line[(firstBase - t) * channels])
+                        * coefficients));
+
+                    nextAccumulator = Denormal.Flush(nextAccumulator + Denormal.Flush(
+                        Vector256.Create((double)line[(secondBase - t) * channels])
+                        * coefficients));
                 }
 
-                peak = Widen(
-                    Denormal.Flush(Denormal.Flush(line[single * channels] * zeroCoefficient)),
-                    peak);
+                peak = Widen(headAccumulator[0], peak);
+                peak = Widen(headAccumulator[1], peak);
+                peak = Widen(headAccumulator[2], peak);
+                peak = Widen(nextAccumulator[0], peak);
+                peak = Widen(nextAccumulator[1], peak);
+                peak = Widen(nextAccumulator[2], peak);
+
+                peaks[channel] = peak;
+            }
+
+            position = second + 1 == delay ? 0 : second + 1;
+        }
+
+        for (; frame < frames; ++frame)
+        {
+            int origin = position + delay;
+
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                float* line = History + channel;
+
+                float head = Denormal.Flush((float)Denormal.Flush(
+                    TFormat.ToUnit(source[(frame * channels) + channel])));
+                line[position * channels] = head;
+                line[origin * channels] = head;
+
+                double peak = peaks[channel];
+
+                peak = Widen(Denormal.Flush(Denormal.Flush(
+                    line[(origin - zeroIndex) * channels] * zeroCoefficient)), peak);
 
                 Vector256<double> accumulator = Vector256<double>.Zero;
-                int split = position + 1 < width ? position + 1 : width;
 
-                for (int t = 0; t < split; ++t)
+                for (int t = 0; t < width; ++t)
                 {
-                    Vector256<double> z = Vector256.Create((double)line[(position - t) * channels]);
-                    accumulator = Denormal.Flush(accumulator
-                        + Denormal.Flush(z * Vector256.Load(PackedCoefficients + (t * 4))));
-                }
-
-                for (int t = split; t < width; ++t)
-                {
-                    Vector256<double> z = Vector256.Create(
-                        (double)line[(position - t + delay) * channels]);
-                    accumulator = Denormal.Flush(accumulator
-                        + Denormal.Flush(z * Vector256.Load(PackedCoefficients + (t * 4))));
+                    accumulator = Denormal.Flush(accumulator + Denormal.Flush(
+                        Vector256.Create((double)line[(origin - t) * channels])
+                        * Vector256.Load(PackedCoefficients + (t * 4))));
                 }
 
                 peak = Widen(accumulator[0], peak);
@@ -204,11 +252,7 @@ internal unsafe partial struct Interpolator
                 peaks[channel] = peak;
             }
 
-            ++position;
-            if (position == delay)
-            {
-                position = 0;
-            }
+            position = position + 1 == delay ? 0 : position + 1;
         }
 
         Position = position;
@@ -228,8 +272,10 @@ internal unsafe partial struct Interpolator
             for (int channel = 0; channel < channels; ++channel)
             {
                 float* line = History + channel;
-                line[position * channels] = Denormal.Flush(
+                float head = Denormal.Flush(
                     (float)Denormal.Flush(TFormat.ToUnit(source[(frame * channels) + channel])));
+                line[position * channels] = head;
+                line[(position + delay) * channels] = head;
 
                 double peak = peaks[channel];
 
