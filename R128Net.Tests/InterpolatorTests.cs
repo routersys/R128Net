@@ -95,4 +95,55 @@ public class InterpolatorTests
 
         Assert.False(mirrored);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(6)]
+    public unsafe void DensePathAgreesWithTheGeneralPathBitForBit(int channels)
+    {
+        const int Factor = 4;
+        const int Frames = 2000;
+
+        double[] input = new double[Frames * channels];
+        uint seed = 362436069u;
+        for (int i = 0; i < input.Length; ++i)
+        {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            input[i] = ((seed / 4294967296.0) * 2.0) - 1.0;
+        }
+
+        using StateMemory denseMemory =
+            new(Interpolator.GetRequiredBytes(Taps, Factor, channels));
+        Interpolator dense = Interpolator.Bind(denseMemory, Taps, Factor, channels);
+        dense.Initialize(Taps, Factor);
+        Assert.Equal(3, dense.DensePhaseCount);
+
+        using StateMemory generalMemory =
+            new(Interpolator.GetRequiredBytes(Taps, Factor, channels));
+        Interpolator general = Interpolator.Bind(generalMemory, Taps, Factor, channels);
+        general.Initialize(Taps, Factor);
+
+        double[] densePeaks = new double[channels];
+        double[] generalPeaks = new double[channels];
+
+        fixed (double* source = input)
+        fixed (double* densePeak = densePeaks)
+        fixed (double* generalPeak = generalPeaks)
+        {
+            for (int pass = 0; pass < 4; ++pass)
+            {
+                dense.AccumulatePeaksDense<DoubleFormat, double>(
+                    source, densePeak, channels, Frames);
+                general.AccumulatePeaksGeneral<DoubleFormat, double>(
+                    source, generalPeak, channels, Frames);
+            }
+        }
+
+        Assert.Equal(dense.Position, general.Position);
+        BitwiseAssert.Equal(generalPeaks, densePeaks, $"{channels} channel true peak");
+    }
 }
