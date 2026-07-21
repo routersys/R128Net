@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+  pull_request:
+    branches: ["main"]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build:
+    name: ビルドと参照一致検証
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: .NET SDK をセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: 原典 libebur128 をビルドして参照データを生成
+        shell: cmd
+        run: reference\build.bat
+
+      - name: 生成された参照データを確認
+        run: ls reference/data | wc -l
+
+      - name: 依存パッケージを復元
+        run: dotnet restore R128Net.slnx
+
+      - name: ソリューションをビルド
+        run: dotnet build R128Net.slnx -c Release --no-restore
+
+      - name: テストを実行
+        run: |
+          dotnet test R128Net.slnx -c Release --no-build \
+            --logger "trx;LogFileName=results.trx" \
+            --results-directory ./test-results
+
+      - name: テスト結果をアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: パッケージが正常に作成されるか確認
+        run: dotnet pack R128Net/R128Net.csproj -c Release --no-build
+
+  publish-aot:
+    name: NativeAOT 発行の確認
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@v4
+
+      - name: .NET SDK をセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: 実行例を NativeAOT で発行
+        shell: cmd
+        run: publish-aot.bat
+
+      - name: 発行された実行ファイルを確認
+        run: find R128Net.Examples/bin -name R128Net.Examples.exe -path "*publish*" -exec ls -la {} +
+
+      - name: 発行された実行ファイルを走らせる
+        shell: cmd
+        run: R128Net.Examples\bin\Release\net10.0\win-x64\publish\R128Net.Examples.exe
+
+  build-linux:
+    name: Linux でのビルド確認
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@v4
+
+      - name: .NET SDK をセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: ライブラリをビルド
+        run: dotnet build R128Net/R128Net.csproj -c Release
