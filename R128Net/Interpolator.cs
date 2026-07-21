@@ -16,7 +16,7 @@ internal unsafe partial struct Interpolator
     public int* Indices;
     public double* Coefficients;
     public double* PackedCoefficients;
-    public float* History;
+    public double* History;
     public int DensePhaseCount;
 
     public static int GetDelay(int taps, int factor)
@@ -33,7 +33,7 @@ internal unsafe partial struct Interpolator
         state.Indices = (int*)allocator.Allocate(factor * delay, (nuint)sizeof(int));
         state.Coefficients = (double*)allocator.Allocate(factor * delay, sizeof(double));
         state.PackedCoefficients = (double*)allocator.Allocate(4 * delay, sizeof(double));
-        state.History = (float*)allocator.Allocate(2 * channels * delay, sizeof(float));
+        state.History = (double*)allocator.Allocate(2 * channels * delay, sizeof(double));
     }
 
     public void Initialize(int taps, int factor)
@@ -121,7 +121,7 @@ internal unsafe partial struct Interpolator
         Position = 0;
         for (int i = 0; i < 2 * channels * Delay; ++i)
         {
-            History[i] = 0.0f;
+            History[i] = 0.0;
         }
     }
 
@@ -169,11 +169,11 @@ internal unsafe partial struct Interpolator
 
             for (int channel = 0; channel < channels; ++channel)
             {
-                float* line = History + channel;
+                double* line = History + channel;
 
-                float head = Denormal.Flush((float)Denormal.Flush(
+                double head = Denormal.Flush((float)Denormal.Flush(
                     TFormat.ToUnit(source[(frame * channels) + channel])));
-                float next = Denormal.Flush((float)Denormal.Flush(
+                double next = Denormal.Flush((float)Denormal.Flush(
                     TFormat.ToUnit(source[((frame + 1) * channels) + channel])));
 
                 line[first * channels] = head;
@@ -197,11 +197,11 @@ internal unsafe partial struct Interpolator
                         Vector256.Load(PackedCoefficients + (t * 4));
 
                     headAccumulator = Denormal.Flush(headAccumulator + Denormal.Flush(
-                        Vector256.Create((double)line[(firstBase - t) * channels])
+                        Vector256.Create(line[(firstBase - t) * channels])
                         * coefficients));
 
                     nextAccumulator = Denormal.Flush(nextAccumulator + Denormal.Flush(
-                        Vector256.Create((double)line[(secondBase - t) * channels])
+                        Vector256.Create(line[(secondBase - t) * channels])
                         * coefficients));
                 }
 
@@ -224,9 +224,9 @@ internal unsafe partial struct Interpolator
 
             for (int channel = 0; channel < channels; ++channel)
             {
-                float* line = History + channel;
+                double* line = History + channel;
 
-                float head = Denormal.Flush((float)Denormal.Flush(
+                double head = Denormal.Flush((float)Denormal.Flush(
                     TFormat.ToUnit(source[(frame * channels) + channel])));
                 line[position * channels] = head;
                 line[origin * channels] = head;
@@ -241,7 +241,7 @@ internal unsafe partial struct Interpolator
                 for (int t = 0; t < width; ++t)
                 {
                     accumulator = Denormal.Flush(accumulator + Denormal.Flush(
-                        Vector256.Create((double)line[(origin - t) * channels])
+                        Vector256.Create(line[(origin - t) * channels])
                         * Vector256.Load(PackedCoefficients + (t * 4))));
                 }
 
@@ -271,8 +271,8 @@ internal unsafe partial struct Interpolator
         {
             for (int channel = 0; channel < channels; ++channel)
             {
-                float* line = History + channel;
-                float head = Denormal.Flush(
+                double* line = History + channel;
+                double head = Denormal.Flush(
                     (float)Denormal.Flush(TFormat.ToUnit(source[(frame * channels) + channel])));
                 line[position * channels] = head;
                 line[(position + delay) * channels] = head;
