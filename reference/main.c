@@ -85,6 +85,68 @@ static void DumpFilterCoefficients(void) {
   free(rates);
 }
 
+static uint32_t g_seed;
+
+static void ResetSeed(void) {
+  g_seed = 2463534242u;
+}
+
+static double NextUnit(void) {
+  g_seed ^= g_seed << 13;
+  g_seed ^= g_seed >> 17;
+  g_seed ^= g_seed << 5;
+  return (double)g_seed / 4294967296.0;
+}
+
+static void DumpTranscendentals(void) {
+  const int kProbeCount = 20000;
+  double *input = (double *)malloc(sizeof(double) * (size_t)kProbeCount);
+  double *output = (double *)malloc(sizeof(double) * (size_t)kProbeCount);
+
+  ResetSeed();
+  for (int i = 0; i < kProbeCount; ++i) {
+    input[i] = NextUnit() * (M_PI / 2.0);
+  }
+  for (int i = 0; i < kProbeCount; ++i) output[i] = tan(input[i]);
+  Write1D("tr_tan_input", input, kProbeCount);
+  Write1D("tr_tan_output", output, kProbeCount);
+
+  ResetSeed();
+  for (int i = 0; i < kProbeCount; ++i) {
+    input[i] = pow(10.0, NextUnit() * 24.0 - 16.0);
+  }
+  for (int i = 0; i < kProbeCount; ++i) output[i] = log(input[i]);
+  Write1D("tr_log_input", input, kProbeCount);
+  Write1D("tr_log_output", output, kProbeCount);
+
+  ResetSeed();
+  for (int i = 0; i < kProbeCount; ++i) {
+    input[i] = NextUnit() * 24.0 - 16.0;
+  }
+  for (int i = 0; i < kProbeCount; ++i) output[i] = pow(10.0, input[i]);
+  Write1D("tr_pow10_input", input, kProbeCount);
+  Write1D("tr_pow10_output", output, kProbeCount);
+
+  free(output);
+  free(input);
+}
+
+static void DumpHistogramTables(void) {
+  ebur128_state *st =
+      ebur128_init(1, 48000, EBUR128_MODE_I | EBUR128_MODE_HISTOGRAM);
+  if (st == NULL) {
+    printf("ebur128_init failed for the histogram tables\n");
+    exit(1);
+  }
+
+  Write1D("histogram_energies", histogram_energies, 1000);
+  Write1D("histogram_boundaries", histogram_energy_boundaries, 1001);
+  WriteScalar("relative_gate_factor", relative_gate_factor);
+  WriteScalar("minus_twenty_decibels", minus_twenty_decibels);
+
+  ebur128_destroy(&st);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("usage: r128ref <output directory>\n");
@@ -95,6 +157,8 @@ int main(int argc, char *argv[]) {
 
   DumpMeta();
   DumpFilterCoefficients();
+  DumpTranscendentals();
+  DumpHistogramTables();
 
   printf("reference data written to %s\n", g_outdir);
   return 0;
