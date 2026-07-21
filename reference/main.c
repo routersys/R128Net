@@ -534,6 +534,62 @@ static void DumpExtreme(void) {
   free(input);
 }
 
+static void DumpMultiple(void) {
+  const unsigned int channels = 2;
+  const unsigned long fs = 48000;
+  const int seconds = 12;
+  const size_t chunkFrames = 4801;
+  const int parts = 3;
+
+  size_t frames = (size_t)fs * (size_t)seconds;
+  double *input = BuildLoudnessInput(channels, fs, frames);
+
+  ebur128_state *states[3];
+  int mode = EBUR128_MODE_I | EBUR128_MODE_LRA;
+
+  size_t span = frames / (size_t)parts;
+  for (int p = 0; p < parts; ++p) {
+    states[p] = ebur128_init(channels, fs, mode);
+    if (states[p] == NULL) {
+      printf("ebur128_init failed for the multiple dump\n");
+      exit(1);
+    }
+
+    size_t begin = (size_t)p * span;
+    size_t end = p + 1 == parts ? frames : begin + span;
+    for (size_t offset = begin; offset < end; offset += chunkFrames) {
+      size_t take = end - offset;
+      if (take > chunkFrames) {
+        take = chunkFrames;
+      }
+      ebur128_add_frames_double(states[p], input + offset * channels, take);
+    }
+  }
+
+  double results[4];
+  results[0] = (double)ebur128_loudness_global_multiple(states, parts, &results[1]);
+  results[2] = (double)ebur128_loudness_range_multiple(states, parts, &results[3]);
+  Write1D("multiple_results", results, 4);
+
+  double single[6];
+  for (int p = 0; p < parts; ++p) {
+    ebur128_loudness_global(states[p], &single[p * 2]);
+    ebur128_loudness_range(states[p], &single[(p * 2) + 1]);
+  }
+  Write2D("multiple_singles", single, parts, 2);
+
+  double counts[3];
+  for (int p = 0; p < parts; ++p) {
+    counts[p] = (double)states[p]->d->block_list_size;
+  }
+  Write1D("multiple_counts", counts, parts);
+
+  for (int p = 0; p < parts; ++p) {
+    ebur128_destroy(&states[p]);
+  }
+  free(input);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("usage: r128ref <output directory>\n");
@@ -570,6 +626,7 @@ int main(int argc, char *argv[]) {
   }
 
   DumpExtreme();
+  DumpMultiple();
 
   printf("reference data written to %s\n", g_outdir);
   return 0;
