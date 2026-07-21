@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <windows.h>
 
 #include "ebur128.c"
 
@@ -590,10 +591,74 @@ static void DumpMultiple(void) {
   free(input);
 }
 
+
+static double ElapsedMilliseconds(LARGE_INTEGER begin, LARGE_INTEGER end,
+    LARGE_INTEGER frequency) {
+  return (double)(end.QuadPart - begin.QuadPart) * 1000.0
+      / (double)frequency.QuadPart;
+}
+
+static void BenchOne(const char *name, int mode, const double *input,
+    size_t frames, unsigned int channels, unsigned long fs,
+    size_t chunkFrames) {
+  LARGE_INTEGER frequency, begin, end;
+  QueryPerformanceFrequency(&frequency);
+
+  ebur128_state *st = ebur128_init(channels, fs, mode);
+  if (st == NULL) {
+    printf("ebur128_init failed for the benchmark %s\n", name);
+    exit(1);
+  }
+
+  QueryPerformanceCounter(&begin);
+  for (size_t offset = 0; offset < frames; offset += chunkFrames) {
+    size_t take = frames - offset;
+    if (take > chunkFrames) {
+      take = chunkFrames;
+    }
+    ebur128_add_frames_double(st, input + offset * channels, take);
+  }
+  QueryPerformanceCounter(&end);
+
+  printf("BENCH %s %.4f\n", name, ElapsedMilliseconds(begin, end, frequency));
+  ebur128_destroy(&st);
+}
+
+static void RunBenchmark(void) {
+  const unsigned int channels = 2;
+  const unsigned long fs = 48000;
+  const int seconds = 30;
+  const size_t chunkFrames = 4800;
+  size_t frames = (size_t)fs * (size_t)seconds;
+
+  double *input = (double *)malloc(sizeof(double) * frames * channels);
+  ResetSeed();
+  for (size_t i = 0; i < frames * channels; ++i) {
+    input[i] = (NextUnit() * 2.0 - 1.0) * 0.25;
+  }
+
+  BenchOne("Momentary", EBUR128_MODE_M, input, frames, channels, fs, chunkFrames);
+  BenchOne("Integrated", EBUR128_MODE_I, input, frames, channels, fs, chunkFrames);
+  BenchOne("LoudnessRange", EBUR128_MODE_LRA, input, frames, channels, fs, chunkFrames);
+  BenchOne("SamplePeak", EBUR128_MODE_I | EBUR128_MODE_SAMPLE_PEAK,
+      input, frames, channels, fs, chunkFrames);
+  BenchOne("TruePeak", EBUR128_MODE_I | EBUR128_MODE_TRUE_PEAK,
+      input, frames, channels, fs, chunkFrames);
+  BenchOne("All", EBUR128_MODE_I | EBUR128_MODE_LRA | EBUR128_MODE_TRUE_PEAK,
+      input, frames, channels, fs, chunkFrames);
+
+  free(input);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("usage: r128ref <output directory>\n");
     return 1;
+  }
+
+  if (getenv("R128NET_BENCH_ONLY") != NULL) {
+    RunBenchmark();
+    return 0;
   }
 
   snprintf(g_outdir, sizeof(g_outdir), "%s", argv[1]);

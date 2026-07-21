@@ -5,6 +5,7 @@ using R128Net;
 const int SampleRate = 48000;
 const int Channels = 2;
 const int Seconds = 30;
+const int ChunkFrames = 4800;
 
 double[] input = new double[SampleRate * Seconds * Channels];
 uint seed = 2463534242u;
@@ -16,17 +17,53 @@ for (int i = 0; i < input.Length; ++i)
     input[i] = (((seed / 4294967296.0) * 2.0) - 1.0) * 0.25;
 }
 
+CultureInfo culture = CultureInfo.InvariantCulture;
+
+static double Measure(double[] input, LoudnessModes modes)
+{
+    using LoudnessMeter meter = new(Channels, SampleRate, modes);
+
+    Stopwatch stopwatch = Stopwatch.StartNew();
+    for (int offset = 0; offset < SampleRate * Seconds; offset += ChunkFrames)
+    {
+        meter.AddFrames(input.AsSpan(offset * Channels, ChunkFrames * Channels));
+    }
+    stopwatch.Stop();
+
+    return stopwatch.Elapsed.TotalMilliseconds;
+}
+
+if (Environment.GetEnvironmentVariable("R128NET_BENCH_ONLY") is not null
+    || (args.Length > 0 && args[0] == "bench"))
+{
+    ReadOnlySpan<(string Name, LoudnessModes Modes)> stages =
+    [
+        ("Momentary", LoudnessModes.Momentary),
+        ("Integrated", LoudnessModes.Integrated),
+        ("LoudnessRange", LoudnessModes.LoudnessRange),
+        ("SamplePeak", LoudnessModes.Integrated | LoudnessModes.SamplePeak),
+        ("TruePeak", LoudnessModes.Integrated | LoudnessModes.TruePeak),
+        ("All", LoudnessModes.Integrated | LoudnessModes.LoudnessRange
+            | LoudnessModes.TruePeak),
+    ];
+
+    foreach ((string name, LoudnessModes modes) in stages)
+    {
+        Console.WriteLine("BENCH {0} {1}", name,
+            Measure(input, modes).ToString("F4", culture));
+    }
+
+    return;
+}
+
 using LoudnessMeter meter = new(Channels, SampleRate, LoudnessModes.All);
 
 Stopwatch stopwatch = Stopwatch.StartNew();
-const int ChunkFrames = 4800;
 for (int offset = 0; offset < SampleRate * Seconds; offset += ChunkFrames)
 {
     meter.AddFrames(input.AsSpan(offset * Channels, ChunkFrames * Channels));
 }
 stopwatch.Stop();
-
-CultureInfo culture = CultureInfo.InvariantCulture;
 
 Console.WriteLine("integrated        {0} LUFS",
     meter.IntegratedLoudness.ToString("F4", culture));
