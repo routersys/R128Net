@@ -1,0 +1,141 @@
+name: 手動リリース
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "リリースバージョン (例: 1.2.3 または 1.2.3-beta.1)"
+        required: true
+        type: string
+      create_tag:
+        description: "タグを自動作成する"
+        required: true
+        type: boolean
+        default: true
+      dry_run:
+        description: "ドライラン (NuGet への発行をスキップ)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  manual-release:
+    name: 手動リリース実行
+    runs-on: windows-latest
+    environment: nuget-release
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 入力値を確認
+        run: |
+          echo "バージョン    : ${{ inputs.version }}"
+          echo "タグ自動作成  : ${{ inputs.create_tag }}"
+          echo "ドライラン    : ${{ inputs.dry_run }}"
+
+      - name: .NET SDK をセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: 原典 libebur128 をビルドして参照データを生成
+        shell: cmd
+        run: reference\build.bat
+
+      - name: 依存パッケージを復元
+        run: dotnet restore R128Net.slnx
+
+      - name: ソリューションをビルド
+        run: |
+          dotnet build R128Net.slnx -c Release --no-restore \
+            -p:Version=${{ inputs.version }}
+
+      - name: 全テストを実行
+        run: |
+          dotnet test R128Net.slnx -c Release --no-build \
+            --logger "trx;LogFileName=results.trx" \
+            --results-directory ./test-results
+
+      - name: NuGet パッケージを作成
+        run: |
+          dotnet pack R128Net/R128Net.csproj -c Release --no-build \
+            -p:Version=${{ inputs.version }} \
+            --output ./artifacts
+
+      - name: 作成されたパッケージ一覧を表示
+        run: ls -la ./artifacts/
+
+      - name: NuGet Trusted Publishing でログイン
+        if: ${{ !inputs.dry_run }}
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: routersys
+
+      - name: NuGet.org へ発行 (ドライランでない場合のみ)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          dotnet nuget push ./artifacts/R128Net.*.nupkg \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+          dotnet nuget push ./artifacts/R128Net.*.snupkg \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate || true
+
+      - name: GitHub Packages へも発行
+        if: ${{ !inputs.dry_run }}
+        run: |
+          dotnet nuget push ./artifacts/R128Net.*.nupkg \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --source https://nuget.pkg.github.com/routersys/index.json \
+            --skip-duplicate || true
+
+      - name: ドライランのため発行をスキップ
+        if: ${{ inputs.dry_run }}
+        run: echo "ドライランのため NuGet.org への発行をスキップしました"
+
+      - name: タグを作成して push
+        if: ${{ inputs.create_tag && !inputs.dry_run }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: GitHub Release を作成
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ inputs.version }}"
+          name: "v${{ inputs.version }}"
+          generate_release_notes: true
+          prerelease: ${{ contains(inputs.version, '-') }}
+          files: |
+            artifacts/R128Net.*.nupkg
+            artifacts/R128Net.*.snupkg
+
+      - name: パッケージをアーティファクトとして保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ inputs.version }}
+          path: artifacts/
+          retention-days: 90
