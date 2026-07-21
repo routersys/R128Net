@@ -8,12 +8,24 @@ internal static class Denormal
     private const long MagnitudeMask = 0x7FFFFFFFFFFFFFFFL;
     private const long SmallestNormal = 0x0010000000000000L;
 
+    private const int SingleMagnitudeMask = 0x7FFFFFFF;
+    private const int SingleSmallestNormal = 0x00800000;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double Flush(double value)
     {
         long bits = BitConverter.DoubleToInt64Bits(value);
         return (bits & MagnitudeMask) < SmallestNormal
             ? BitConverter.Int64BitsToDouble(bits & long.MinValue)
+            : value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float Flush(float value)
+    {
+        int bits = BitConverter.SingleToInt32Bits(value);
+        return (bits & SingleMagnitudeMask) < SingleSmallestNormal
+            ? BitConverter.Int32BitsToSingle(bits & int.MinValue)
             : value;
     }
 
