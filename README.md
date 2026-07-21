@@ -1,1 +1,291 @@
 # R128Net
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#)
+[![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](#)
+[![Release](https://img.shields.io/github/v/release/routersys/R128Net.svg)](https://github.com/routersys/R128Net/releases)
+
+English | [日本語](https://github.com/routersys/R128Net/blob/main/README.ja.md)
+
+---
+
+A complete C# port of [libebur128](https://github.com/jiixyj/libebur128), the loudness measurement library implementing EBU R128 and ITU-R BS.1770 by Jan Kokemüller.
+Measurement runs without a single managed allocation, so the garbage collector never observes the analysis path.
+All state comes from one native block, every hot routine is written with `unsafe` pointers, and the whole library is annotated for Native AOT.
+Correctness is not asserted from reading the source: every stage is compared against golden data produced by the original C compiled with MSVC.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Requirements](#requirements)
+3. [Installation](#installation)
+4. [Features](#features)
+   - [1. Loudness measurement](#1-loudness-measurement)
+   - [2. Peak measurement](#2-peak-measurement)
+   - [3. Gating and the histogram](#3-gating-and-the-histogram)
+   - [4. Multiple instances](#4-multiple-instances)
+   - [5. Zero allocation and the state buffer](#5-zero-allocation-and-the-state-buffer)
+   - [6. Numerical verification](#6-numerical-verification)
+   - [7. Performance](#7-performance)
+5. [API Reference](#api-reference)
+   - [Construction](#construction)
+   - [Feeding audio](#feeding-audio)
+   - [Loudness](#loudness)
+   - [Peaks](#peaks)
+   - [Channels](#channels)
+   - [Options](#options)
+6. [Limitations](#limitations)
+7. [Notes](#notes)
+8. [Disclaimer](#disclaimer)
+9. [Third-Party Licenses](#third-party-licenses)
+10. [License](#license)
+
+---
+
+## Overview
+
+R128Net ports libebur128 to C#. Momentary, short-term and integrated loudness, loudness range, the relative threshold, sample peak and true peak are all provided, together with the histogram algorithm and the aggregation of several measurement instances into a single figure.
+
+The public surface is modern C#. Audio is passed as `ReadOnlySpan<short>`, `ReadOnlySpan<int>`, `ReadOnlySpan<float>` or `ReadOnlySpan<double>`, the mode set is a `[Flags]` enum that reproduces the implied bits of the original, options are a `readonly record struct` with `init` accessors, and results are properties on a single `LoudnessMeter` class. The pointer-based internals are not exposed.
+
+All state is served by one 64-byte aligned block obtained from `NativeMemory.AlignedAlloc` at construction. The layout of that block is declared once as a `Layout` method on a dedicated type; a source generator reads that method's signature and emits both the size query and the binding call, so the reported size and the actual consumption cannot drift apart.
+
+The original C is not vendored into this repository. The reference harness under `reference/` clones libebur128 at a pinned commit, builds it with MSVC and dumps the internal state of every stage as raw doubles. The test suite loads those dumps and compares them against the C# results.
+
+---
+
+## Requirements
+
+| Item | Requirement |
+|---|---|
+| OS | Windows, Linux or macOS supported by .NET 10 |
+| SDK | .NET SDK 10.0 |
+| Language | C# 14 or later (`LangVersion` is set to `latest`) |
+| Unsafe code | Not required in the consuming project |
+| Reference data | MSVC C toolset and Git, required only to regenerate the golden data used by the tests |
+
+---
+
+## Installation
+
+```sh
+dotnet add package R128Net
+```
+
+1. Create a `LoudnessMeter` with the channel count, the sample rate and the modes you need. Request the lowest set of modes that suits your needs, because every mode costs processing time.
+2. Feed interleaved audio through `AddFrames`. Buffers of any length are accepted as long as they hold a whole number of frames.
+3. Read the results as properties. They may be read at any point during the measurement.
+4. To run the test suite, generate the reference data first by executing `reference/build.bat`, which clones libebur128, builds it with MSVC and writes the dumps to `reference/data`.
+5. To produce a Native AOT binary of the sample application, run `publish-aot.bat`.
+
+---
+
+## Features
+
+### 1. Loudness measurement
+
+The BS.1770 pre-filter is the cascade of a high shelf and a high pass, combined into one fourth-order section exactly as the original does. Gating blocks span 400 ms and advance by 100 ms, giving the 75 percent overlap of the 2011 revision.
+
+Momentary loudness covers the last 400 ms and short-term loudness the last 3 s. Integrated loudness applies the absolute gate at -70 LUFS and then the relative gate 10 LU below the ungated mean. Loudness range follows EBU Tech 3342, taking the 10th and 95th percentile of the short-term blocks that survive a gate 20 dB below their mean. `GetLoudnessOverWindow` reports the loudness of any window up to the configured maximum.
+
+### 2. Peak measurement
+
+Sample peak is the largest absolute sample divided by the scaling factor of the input format. True peak oversamples by four below 96 kHz and by two below 192 kHz using a 49-tap polyphase FIR interpolator, and leaves the signal unchanged at 192 kHz and above. Both are available for the whole measurement and for the most recent call to `AddFrames`.
+
+The original writes the converted input to one buffer, writes every interpolated sample to a second buffer, and scans that buffer for the peak in a separate pass. Both buffers and both passes are fused away here. The stored value would be read back unchanged, and a maximum does not depend on the order of the scan, so the fusion leaves every result identical.
+
+### 3. Gating and the histogram
+
+Channel weights follow BS.1770: the surround positions contribute a factor of 1.41, a channel marked as dual mono contributes a factor of two, and a channel marked as unused is skipped and is not written to the ring buffer at all.
+
+The histogram algorithm quantises block energies into 1000 bins of 0.1 LU and is selected with `LoudnessModes.Histogram`. It bounds the memory of a long measurement at the cost of quantising the result. Without it the block energies are kept individually, which is the default and matches the original.
+
+### 4. Multiple instances
+
+`LoudnessMeter.GatedLoudness` and `LoudnessMeter.LoudnessRangeOf` accept a span of meters and produce the figure that a single meter fed with all the material would have produced. This is the intended way to measure several files as one programme, or to measure one file on several threads. The meters must agree on whether they use the histogram algorithm.
+
+### 5. Zero allocation and the state buffer
+
+The filtered ring buffer, the filter state, the channel map, the peak arrays, the histograms and the interpolator all live in one aligned native block allocated at construction. A type marked with `[StateLayout]` declares its requirement once as a `Layout` method generic over an allocator. Running it with the measuring allocator yields the required byte count without touching memory, and running it with the binding allocator performs the actual binding. The source generator emits `GetRequiredBytes` and `Bind` from that single signature.
+
+The block energy history grows geometrically in native memory by default, which reproduces the effectively unbounded history of the original. `PreallocateHistory` sizes it once from the requested maximum history instead, after which the measurement performs no allocation of any kind.
+
+The absence of managed allocation is measured, not asserted. `GC.GetAllocatedBytesForCurrentThread` reports a delta of zero bytes across `AddFrames` for all four input formats and across every query, including the sort that loudness range performs.
+
+### 6. Numerical verification
+
+The test suite compares against dumps produced by the original C built with MSVC. Because the internal state of libebur128 is an incomplete type, the harness includes `ebur128.c` into its own translation unit and reaches the state directly. The following table records the agreement that the tests enforce.
+
+| Stage | Agreement |
+|---|---|
+| Pre-filter coefficients, 20 sample rates | Bit-exact |
+| Filtered output and filter state | Bit-exact |
+| Filter state through a silent decay, 40 blocks | Bit-exact |
+| Interpolator coefficients, both oversampling factors | Bit-exact |
+| Gating block energies and short-term block energies | Bit-exact |
+| Integrated loudness, momentary, short-term, window, relative threshold | Bit-exact |
+| Loudness range, list algorithm and histogram algorithm | Bit-exact |
+| Sample peak and true peak, current and previous | Bit-exact |
+| Histogram bin counts, 1000 bins of each kind | Bit-exact |
+| Aggregation across three instances | Bit-exact |
+
+Those figures hold for eight configurations: stereo, five-channel surround, dual mono, the histogram algorithm, buffer lengths aligned and unaligned to the 100 ms boundary, 44100 Hz, 96000 Hz, and an adversarial signal whose amplitude cycles through 1e-310, 1e-40, 5e-324 and exact zero.
+
+The transcendental functions are measured separately. `Math.Tan` and `Math.Log` return exactly the same doubles as the MSVC runtime over 20000 sampled arguments each. `Math.Pow` differs by at most one unit in the last place on fewer than one in a thousand of the sampled inputs, which is why the histogram boundary table is embedded rather than computed.
+
+The suite contains 131 tests and all of them pass.
+
+### 7. Performance
+
+Measured on an Intel Core i7-1360P under Windows 11, published with Native AOT for an `x86-64-v3` baseline, analysing 30 seconds of stereo 48 kHz audio with every mode enabled.
+
+| Quantity | Figure |
+|---|---|
+| Wall clock | 245 ms |
+| Faster than real time | 120x |
+
+True peak dominates the cost. The following optimisations were applied to it, and every one of them leaves the output bit-exact.
+
+| Optimisation | Effect |
+|---|---|
+| Delay line duplicated to twice its length, removing the wrap branch | Combined below |
+| Two-frame unrolling, doubling the independent dependency chains | 2.1x together with the above |
+| Delay line held already widened to double, removing a conversion per tap | 1.5x |
+| Subfilters one to three vectorised across phase | 1.09x |
+
+Each accumulation chain must keep the addition order of the original, so the chain itself cannot be shortened. Unrolling further to four frames was measured and rejected: it regressed by 13 percent under Native AOT because four accumulators exceed the vector register budget. The just-in-time measurement had suggested the opposite, which is why the decision was taken from the Native AOT figures.
+
+The K-weighting filter is vectorised across channels, which is bit-exact because each lane performs the arithmetic of one channel in the original order. It yields 1.4x to 1.8x at four channels and above. A two-channel vector path was implemented and removed after measurement showed no gain beyond the noise floor.
+
+---
+
+## API Reference
+
+### Construction
+
+```csharp
+using R128Net;
+
+using LoudnessMeter meter = new(channels: 2, sampleRate: 48000, LoudnessModes.All);
+```
+
+| Member | Description |
+|---|---|
+| `LoudnessMeter(int, int, LoudnessModes)` | Creates a meter with the default options |
+| `LoudnessMeter(int, int, LoudnessModes, in LoudnessMeterOptions)` | Creates a meter with explicit options |
+| `Channels`, `SampleRate`, `Modes` | The configuration the meter was created with |
+| `MaxWindowMilliseconds`, `MaxHistoryMilliseconds` | The current window and history |
+| `Dispose` | Releases the native state |
+
+`LoudnessModes` reproduces the implied bits of the original: `ShortTerm` implies `Momentary`, `Integrated` implies `Momentary`, `LoudnessRange` implies `ShortTerm`, and `TruePeak` implies `SamplePeak`.
+
+### Feeding audio
+
+```csharp
+meter.AddFrames(interleaved);
+```
+
+| Overload | Full-scale value |
+|---|---|
+| `AddFrames(ReadOnlySpan<short>)` | 32768 |
+| `AddFrames(ReadOnlySpan<int>)` | 2147483648 |
+| `AddFrames(ReadOnlySpan<float>)` | 1.0 |
+| `AddFrames(ReadOnlySpan<double>)` | 1.0 |
+
+Samples are interleaved by channel. The span must hold a whole number of frames.
+
+### Loudness
+
+| Member | Unit | Requires |
+|---|---|---|
+| `MomentaryLoudness` | LUFS | `Momentary` |
+| `ShortTermLoudness` | LUFS | `ShortTerm` |
+| `IntegratedLoudness` | LUFS | `Integrated` |
+| `LoudnessRange` | LU | `LoudnessRange` |
+| `RelativeThreshold` | LUFS | `Integrated` |
+| `GetLoudnessOverWindow(long)` | LUFS | `Momentary` |
+| `LoudnessMeter.GatedLoudness(ReadOnlySpan<LoudnessMeter>)` | LUFS | `Integrated` on every meter |
+| `LoudnessMeter.LoudnessRangeOf(ReadOnlySpan<LoudnessMeter>)` | LU | `LoudnessRange` on every meter |
+
+A loudness of negative infinity means the material is silent or entirely below the absolute gate. A loudness range of zero means too few short-term blocks survived the gate.
+
+### Peaks
+
+| Member | Requires |
+|---|---|
+| `GetSamplePeak(int)` | `SamplePeak` |
+| `GetPreviousSamplePeak(int)` | `SamplePeak` |
+| `GetTruePeak(int)` | `TruePeak` |
+| `GetPreviousTruePeak(int)` | `TruePeak` |
+
+A value of 1.0 is 0 dBFS, so the conversion to decibels is `20 * log10(value)`. The previous variants report the peak of the most recent call to `AddFrames`. True peak never reports less than sample peak.
+
+### Channels
+
+| Member | Description |
+|---|---|
+| `SetChannel(int, ChannelPosition)` | Assigns a position to a channel |
+| `GetChannel(int)` | Reads the position of a channel |
+
+The default map assigns the BS.1770 layout for four and five channels, and otherwise assigns left, right, centre, unused, left surround and right surround from the first channel onwards. `ChannelPosition.DualMono` applies only to the single channel of a mono meter.
+
+### Options
+
+| Member | Default | Description |
+|---|---|---|
+| `MaxHistoryMilliseconds` | 4294967295 | The history retained for integrated loudness and loudness range |
+| `PreallocateHistory` | `false` | Sizes the history once instead of growing it |
+| `UseUpstreamWindowOverflow` | `false` | Reproduces the integer overflow of the original on Windows |
+
+---
+
+## Limitations
+
+- Bit-exactness has been verified against libebur128 compiled with MSVC on Windows x64. Other compilers, other runtimes and other architectures may round the transcendental functions differently, and the agreement above is not claimed for them.
+- The histogram boundary table differs from the original at two of its 1001 entries by one unit in the last place. The embedded values are the correctly rounded ones; the MSVC `pow` is not, and `pow` is not required to be correctly rounded by IEEE 754. The difference is confined to the histogram algorithm.
+- `LoudnessMeter` is not thread-safe. Concurrent measurement requires one meter per thread, which the aggregation functions are designed for.
+- Sample rates at which the pre-filter diverges are rejected at construction rather than accepted as the original accepts them. Every rate from 3364 Hz upwards is accepted.
+- `ebur128_set_max_window` and `ebur128_change_parameters` are not ported. Both reallocate the audio buffer, and the equivalent is to create a new meter.
+- Running the comparison tests requires the reference data. Without `reference/data` those tests cannot execute.
+- The sample application under `R128Net.Examples` writes to the console and therefore allocates managed memory. The zero-allocation guarantee applies to the library.
+
+---
+
+## Notes
+
+- Processing cost: true peak is by far the most expensive mode, accounting for the large majority of the total. Omitting it from the mode set is the single most effective way to speed up a measurement. Sample peak and gating are minor by comparison.
+- Denormal handling: the original enables the flush-to-zero bit of the MXCSR register while filtering. The .NET runtime exposes no equivalent, so the flush is emulated at the level of the individual operation. The emulation reproduces the state trajectory of the original through a silent decay exactly, and it also avoids the fifty-fold slowdown that denormal arithmetic would otherwise cause on silence.
+- Meter reuse: the state is allocated once at construction. Creating a meter for every buffer defeats the purpose and reintroduces native allocation.
+- Determinism: the measurement produces identical output across repeated runs and does not depend on the length of the buffers passed to `AddFrames`. The test suite feeds the same material one frame at a time and in bulk and compares the results bit for bit.
+- State layout: a type marked with `[StateLayout]` must expose a `Layout` method generic over `IStateAllocator`. The generator emits `GetRequiredBytes` and `Bind` with a matching parameter list, and skips whichever of the two the type already declares.
+- Native AOT: the library sets `IsAotCompatible`, which enables the trim, single-file and AOT analyzers. `publish-aot.bat` publishes the sample application for `win-x64` and requires the MSVC toolset for the native linker. It also places the Visual Studio installer directory on the path, because the linker probe of the AOT compiler fails when `vswhere.exe` cannot be resolved.
+- Regenerating reference data: `reference/build.bat` clones libebur128 into `reference/ebur128-src`, verifies that the checkout is the pinned commit, builds it, and writes the dumps. The clone and the build output are excluded from version control.
+
+---
+
+## Disclaimer
+
+This library is published under the MIT License.
+
+This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement.
+
+The author accepts no liability for any damage arising from the use of or the inability to use this library. Use it at your own risk.
+
+---
+
+## Third-Party Licenses
+
+R128Net is a derivative work of the software below. The full license text is stored in the repository under [`.github/LICENSE/libebur128.txt`](https://github.com/routersys/R128Net/blob/main/.github/LICENSE/libebur128.txt).
+
+libebur128 is distributed under the MIT License, which requires that redistributions retain its copyright notice and permission notice. That file carries the text unmodified. No third-party source code is vendored into this repository, and the reference harness downloads libebur128 on demand.
+
+| Software | Purpose | License | Copyright |
+|---|---|---|---|
+| [libebur128](https://github.com/jiixyj/libebur128) | Origin of every ported algorithm and of the reference implementation used for verification | MIT License | Copyright (c) 2011 Jan Kokemüller |
+
+---
+
+## License
+
+[MIT License](https://github.com/routersys/R128Net/blob/main/LICENSE.txt)
