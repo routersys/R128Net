@@ -4,8 +4,8 @@ public class KWeightingFilterTests
 {
     private const double ReferenceSampleRate = 48000;
 
-    private static unsafe (double[] output, double[] state) RunScalar(
-        double[] input, int frames, int channels, ChannelPosition[] map)
+    private static unsafe (double[] output, double[] state) Run(
+        double[] input, int frames, int channels, ChannelPosition[] map, bool vectorized)
     {
         double[] output = new double[frames * channels];
         double[] state = new double[KWeightingFilter.StateTaps * channels];
@@ -16,15 +16,31 @@ public class KWeightingFilterTests
         fixed (double* taps = state)
         fixed (ChannelPosition* channelMap = map)
         {
-            KWeightingFilter.ProcessScalar<DoubleFormat, double>(
-                source, destination, taps, channelMap, channels, frames, weighting);
+            if (vectorized)
+            {
+                KWeightingFilter.Process<DoubleFormat, double>(
+                    source, destination, taps, channelMap, channels, frames, weighting);
+            }
+            else
+            {
+                KWeightingFilter.ProcessScalar<DoubleFormat, double>(
+                    source, destination, taps, channelMap, channels, frames, weighting);
+            }
         }
 
         return (output, state);
     }
 
-    [Fact]
-    public void FilteredOutputMatchesTheReferenceExactly()
+    private static (double[] output, double[] state) RunScalar(
+        double[] input, int frames, int channels, ChannelPosition[] map)
+    {
+        return Run(input, frames, channels, map, vectorized: false);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FilteredOutputMatchesTheReferenceExactly(bool vectorized)
     {
         ReferenceArray input = ReferenceData.Load("filter_input");
         ReferenceArray expected = ReferenceData.Load("filter_output");
@@ -35,9 +51,55 @@ public class KWeightingFilterTests
         ChannelPosition[] map = [ChannelPosition.Left, ChannelPosition.Right];
         Assert.Equal(map.Length, input.Columns);
 
-        (double[] output, _) = RunScalar(input.Values, input.Rows, input.Columns, map);
+        (double[] output, _) = Run(
+            input.Values, input.Rows, input.Columns, map, vectorized);
 
         BitwiseAssert.Equal(expected.Values, output, "filtered sample");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(16)]
+    public void VectorisedPathAgreesWithTheScalarPathBitForBit(int channels)
+    {
+        const int Frames = 3000;
+
+        double[] input = new double[Frames * channels];
+        uint seed = 88675123u;
+        for (int i = 0; i < input.Length; ++i)
+        {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            input[i] = ((seed / 4294967296.0) * 2.0) - 1.0;
+        }
+
+        for (int unused = -1; unused < channels; ++unused)
+        {
+            ChannelPosition[] map = new ChannelPosition[channels];
+            for (int c = 0; c < channels; ++c)
+            {
+                map[c] = c == unused ? ChannelPosition.Unused : ChannelPosition.Left;
+            }
+
+            (double[] scalarOutput, double[] scalarState) =
+                Run(input, Frames, channels, map, vectorized: false);
+            (double[] vectorOutput, double[] vectorState) =
+                Run(input, Frames, channels, map, vectorized: true);
+
+            BitwiseAssert.Equal(scalarOutput, vectorOutput,
+                $"{channels} channels with channel {unused} unused, output");
+            BitwiseAssert.Equal(scalarState, vectorState,
+                $"{channels} channels with channel {unused} unused, state");
+        }
     }
 
     [Fact]
