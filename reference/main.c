@@ -147,6 +147,138 @@ static void DumpHistogramTables(void) {
   ebur128_destroy(&st);
 }
 
+static void DumpFilterOutput(void) {
+  const unsigned int channels = 2;
+  const unsigned long samplerate = 48000;
+  const size_t frames = 19200;
+  const size_t samples = frames * channels;
+
+  double *input = (double *)malloc(sizeof(double) * samples);
+  ResetSeed();
+  for (size_t i = 0; i < samples; ++i) {
+    input[i] = NextUnit() * 2.0 - 1.0;
+  }
+
+  ebur128_state *st = ebur128_init(channels, samplerate, EBUR128_MODE_M);
+  if (st == NULL) {
+    printf("ebur128_init failed for the filter output dump\n");
+    exit(1);
+  }
+
+  if (st->d->audio_data_frames != frames) {
+    printf("unexpected audio_data_frames %zu\n", st->d->audio_data_frames);
+    exit(1);
+  }
+
+  ebur128_add_frames_double(st, input, frames);
+
+  Write2D("filter_input", input, (int)frames, (int)channels);
+  Write2D("filter_output", st->d->audio_data, (int)frames, (int)channels);
+
+  double state[10];
+  for (unsigned int c = 0; c < channels; ++c) {
+    for (int j = 0; j < FILTER_STATE_SIZE; ++j) {
+      state[c * FILTER_STATE_SIZE + j] = st->d->v[c][j];
+    }
+  }
+  Write2D("filter_state", state, (int)channels, FILTER_STATE_SIZE);
+  WriteScalar("filter_output_index", (double)st->d->audio_data_index);
+
+  ebur128_destroy(&st);
+  free(input);
+}
+
+static void DumpDenormalDecay(void) {
+  const unsigned int channels = 1;
+  const unsigned long samplerate = 48000;
+  const size_t chunk = 4800;
+  const int chunks = 40;
+
+  double *noise = (double *)malloc(sizeof(double) * chunk);
+  double *silence = (double *)calloc(chunk, sizeof(double));
+
+  ResetSeed();
+  for (size_t i = 0; i < chunk; ++i) {
+    noise[i] = NextUnit() * 2.0 - 1.0;
+  }
+
+  ebur128_state *st = ebur128_init(channels, samplerate, EBUR128_MODE_M);
+  if (st == NULL) {
+    printf("ebur128_init failed for the denormal decay dump\n");
+    exit(1);
+  }
+
+  ebur128_add_frames_double(st, noise, chunk);
+
+  double *trace = (double *)malloc(
+      sizeof(double) * (size_t)chunks * FILTER_STATE_SIZE);
+  for (int k = 0; k < chunks; ++k) {
+    ebur128_add_frames_double(st, silence, chunk);
+    for (int j = 0; j < FILTER_STATE_SIZE; ++j) {
+      trace[(size_t)k * FILTER_STATE_SIZE + (size_t)j] = st->d->v[0][j];
+    }
+  }
+
+  Write2D("denormal_decay", trace, chunks, FILTER_STATE_SIZE);
+
+  free(trace);
+  ebur128_destroy(&st);
+  free(silence);
+  free(noise);
+}
+
+static void DumpDenormalGrowth(void) {
+  const unsigned int channels = 1;
+  const unsigned long samplerate = 48000;
+  const size_t chunk = 4800;
+  const int chunks = 9000;
+  const int stride = 100;
+  const int rows = chunks / stride;
+
+  double *noise = (double *)malloc(sizeof(double) * chunk);
+  double *silence = (double *)calloc(chunk, sizeof(double));
+
+  ResetSeed();
+  for (size_t i = 0; i < chunk; ++i) {
+    noise[i] = NextUnit() * 2.0 - 1.0;
+  }
+
+  ebur128_state *st = ebur128_init(channels, samplerate, EBUR128_MODE_M);
+  if (st == NULL) {
+    printf("ebur128_init failed for the denormal growth dump\n");
+    exit(1);
+  }
+
+  ebur128_add_frames_double(st, noise, chunk);
+
+  double *trace = (double *)malloc(sizeof(double) * (size_t)rows * 3);
+  for (int k = 0; k < chunks; ++k) {
+    ebur128_add_frames_double(st, silence, chunk);
+    if ((k + 1) % stride == 0) {
+      int row = ((k + 1) / stride) - 1;
+      double peak = 0.0;
+      for (int j = 0; j < FILTER_STATE_SIZE; ++j) {
+        double magnitude = fabs(st->d->v[0][j]);
+        if (magnitude > peak) {
+          peak = magnitude;
+        }
+      }
+      double momentary;
+      ebur128_loudness_momentary(st, &momentary);
+      trace[(size_t)row * 3] = (double)((k + 1) * chunk);
+      trace[(size_t)row * 3 + 1] = peak;
+      trace[(size_t)row * 3 + 2] = momentary;
+    }
+  }
+
+  Write2D("denormal_growth", trace, rows, 3);
+
+  free(trace);
+  ebur128_destroy(&st);
+  free(silence);
+  free(noise);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("usage: r128ref <output directory>\n");
@@ -159,6 +291,9 @@ int main(int argc, char *argv[]) {
   DumpFilterCoefficients();
   DumpTranscendentals();
   DumpHistogramTables();
+  DumpFilterOutput();
+  DumpDenormalDecay();
+  DumpDenormalGrowth();
 
   printf("reference data written to %s\n", g_outdir);
   return 0;
