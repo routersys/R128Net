@@ -279,6 +279,185 @@ static void DumpDenormalGrowth(void) {
   free(noise);
 }
 
+static void DumpInterpolator(void) {
+  static const unsigned long rates[2] = { 48000, 96000 };
+  char name[256];
+
+  for (int r = 0; r < 2; ++r) {
+    ebur128_state *st = ebur128_init(1, rates[r], EBUR128_MODE_TRUE_PEAK);
+    if (st == NULL || st->d->interp == NULL) {
+      printf("ebur128_init failed for the interpolator dump\n");
+      exit(1);
+    }
+
+    interpolator *interp = st->d->interp;
+    unsigned int factor = interp->factor;
+
+    double header[4];
+    header[0] = (double)interp->factor;
+    header[1] = (double)interp->taps;
+    header[2] = (double)interp->delay;
+    header[3] = (double)interp->channels;
+    snprintf(name, sizeof(name), "interp_header_%lu", rates[r]);
+    Write1D(name, header, 4);
+
+    double *counts = (double *)malloc(sizeof(double) * factor);
+    for (unsigned int f = 0; f < factor; ++f) {
+      counts[f] = (double)interp->filter[f].count;
+    }
+    snprintf(name, sizeof(name), "interp_counts_%lu", rates[r]);
+    Write1D(name, counts, (int)factor);
+    free(counts);
+
+    double *coeff = (double *)malloc(
+        sizeof(double) * (size_t)factor * interp->delay);
+    double *index = (double *)malloc(
+        sizeof(double) * (size_t)factor * interp->delay);
+    for (unsigned int f = 0; f < factor; ++f) {
+      for (unsigned int t = 0; t < interp->delay; ++t) {
+        coeff[(size_t)f * interp->delay + t] = interp->filter[f].coeff[t];
+        index[(size_t)f * interp->delay + t] =
+            (double)interp->filter[f].index[t];
+      }
+    }
+    snprintf(name, sizeof(name), "interp_coeff_%lu", rates[r]);
+    Write2D(name, coeff, (int)factor, (int)interp->delay);
+    snprintf(name, sizeof(name), "interp_index_%lu", rates[r]);
+    Write2D(name, index, (int)factor, (int)interp->delay);
+    free(index);
+    free(coeff);
+
+    ebur128_destroy(&st);
+  }
+}
+
+static const double kAmplitudes[10] = {
+  1.0, 0.5, 0.25, 0.1, 0.03, 0.008, 0.0, 0.7, 0.002, 0.35
+};
+
+static double *BuildLoudnessInput(unsigned int channels, unsigned long fs,
+    size_t frames) {
+  double *input = (double *)malloc(sizeof(double) * frames * channels);
+  ResetSeed();
+  for (size_t i = 0; i < frames; ++i) {
+    double amplitude = kAmplitudes[(i / (size_t)fs) % 10];
+    for (unsigned int c = 0; c < channels; ++c) {
+      input[i * channels + c] = (NextUnit() * 2.0 - 1.0) * amplitude;
+    }
+  }
+  return input;
+}
+
+static void DumpBlockList(const char *name,
+    struct ebur128_double_queue *list) {
+  size_t count = 0;
+  struct ebur128_dq_entry *it;
+  STAILQ_FOREACH(it, list, entries) {
+    ++count;
+  }
+
+  double *values = (double *)malloc(sizeof(double) * (count == 0 ? 1 : count));
+  size_t j = 0;
+  STAILQ_FOREACH(it, list, entries) {
+    values[j++] = it->z;
+  }
+
+  Write1D(name, values, (int)count);
+  free(values);
+}
+
+static void DumpLoudness(const char *suffix, unsigned int channels,
+    unsigned long fs, int seconds, int mode, const int *channelMap,
+    size_t chunkFrames) {
+  size_t frames = (size_t)fs * (size_t)seconds;
+  double *input = BuildLoudnessInput(channels, fs, frames);
+  char name[256];
+
+  ebur128_state *st = ebur128_init(channels, fs, mode);
+  if (st == NULL) {
+    printf("ebur128_init failed for the loudness dump %s\n", suffix);
+    exit(1);
+  }
+
+  if (channelMap != NULL) {
+    for (unsigned int c = 0; c < channels; ++c) {
+      ebur128_set_channel(st, c, channelMap[c]);
+    }
+  }
+
+  snprintf(name, sizeof(name), "loudness_head_%s", suffix);
+  Write2D(name, input, 4800, (int)channels);
+
+  for (size_t offset = 0; offset < frames; offset += chunkFrames) {
+    size_t take = frames - offset;
+    if (take > chunkFrames) {
+      take = chunkFrames;
+    }
+    ebur128_add_frames_double(st, input + offset * channels, take);
+  }
+
+  double results[6];
+  int errors[6];
+  errors[0] = ebur128_loudness_global(st, &results[0]);
+  errors[1] = ebur128_loudness_momentary(st, &results[1]);
+  errors[2] = ebur128_loudness_shortterm(st, &results[2]);
+  errors[3] = ebur128_loudness_range(st, &results[3]);
+  errors[4] = ebur128_relative_threshold(st, &results[4]);
+  errors[5] = ebur128_loudness_window(st, 400, &results[5]);
+
+  for (int i = 0; i < 6; ++i) {
+    if (errors[i] != EBUR128_SUCCESS) {
+      results[i] = (double)(-1000000 - errors[i]);
+    }
+  }
+
+  snprintf(name, sizeof(name), "loudness_results_%s", suffix);
+  Write1D(name, results, 6);
+
+  double *peaks = (double *)malloc(sizeof(double) * channels * 4);
+  for (unsigned int c = 0; c < channels; ++c) {
+    double value;
+    peaks[c * 4] = ebur128_sample_peak(st, c, &value) == EBUR128_SUCCESS
+        ? value : -1.0;
+    peaks[c * 4 + 1] = ebur128_true_peak(st, c, &value) == EBUR128_SUCCESS
+        ? value : -1.0;
+    peaks[c * 4 + 2] = ebur128_prev_sample_peak(st, c, &value) == EBUR128_SUCCESS
+        ? value : -1.0;
+    peaks[c * 4 + 3] = ebur128_prev_true_peak(st, c, &value) == EBUR128_SUCCESS
+        ? value : -1.0;
+  }
+  snprintf(name, sizeof(name), "loudness_peaks_%s", suffix);
+  Write2D(name, peaks, (int)channels, 4);
+  free(peaks);
+
+  snprintf(name, sizeof(name), "loudness_blocks_%s", suffix);
+  DumpBlockList(name, &st->d->block_list);
+  snprintf(name, sizeof(name), "loudness_shortterm_%s", suffix);
+  DumpBlockList(name, &st->d->short_term_block_list);
+
+  if (st->d->use_histogram) {
+    double *bins = (double *)malloc(sizeof(double) * 1000 * 2);
+    for (int i = 0; i < 1000; ++i) {
+      bins[i * 2] = (double)st->d->block_energy_histogram[i];
+      bins[i * 2 + 1] = (double)st->d->short_term_block_energy_histogram[i];
+    }
+    snprintf(name, sizeof(name), "loudness_histogram_%s", suffix);
+    Write2D(name, bins, 1000, 2);
+    free(bins);
+  }
+
+  double geometry[4];
+  geometry[0] = (double)st->d->audio_data_index;
+  geometry[1] = (double)st->d->audio_data_frames;
+  geometry[2] = (double)st->d->needed_frames;
+  geometry[3] = (double)st->d->short_term_frame_counter;
+  snprintf(name, sizeof(name), "loudness_geometry_%s", suffix);
+  Write1D(name, geometry, 4);
+
+  ebur128_destroy(&st);
+  free(input);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf("usage: r128ref <output directory>\n");
@@ -294,6 +473,25 @@ int main(int argc, char *argv[]) {
   DumpFilterOutput();
   DumpDenormalDecay();
   DumpDenormalGrowth();
+  DumpInterpolator();
+
+  {
+    static const int surround[5] = {
+      EBUR128_LEFT, EBUR128_RIGHT, EBUR128_CENTER,
+      EBUR128_LEFT_SURROUND, EBUR128_RIGHT_SURROUND
+    };
+    static const int dualMono[1] = { EBUR128_DUAL_MONO };
+    int full = EBUR128_MODE_I | EBUR128_MODE_LRA | EBUR128_MODE_TRUE_PEAK;
+
+    DumpLoudness("stereo", 2, 48000, 20, full, NULL, 4801);
+    DumpLoudness("surround", 5, 48000, 20, full, surround, 4801);
+    DumpLoudness("dualmono", 1, 48000, 20, full, dualMono, 4801);
+    DumpLoudness("histogram", 2, 48000, 20, full | EBUR128_MODE_HISTOGRAM,
+        NULL, 4801);
+    DumpLoudness("aligned", 2, 48000, 20, full, NULL, 4800);
+    DumpLoudness("rate44100", 2, 44100, 20, full, NULL, 4801);
+    DumpLoudness("rate96000", 2, 96000, 12, full, NULL, 4801);
+  }
 
   printf("reference data written to %s\n", g_outdir);
   return 0;
