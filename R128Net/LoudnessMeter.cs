@@ -9,6 +9,8 @@ public sealed unsafe class LoudnessMeter : IDisposable
     public const int MaximumSampleRate = 2822400;
 
     private const int InterpolatorTaps = 49;
+    private const long MomentaryWindowMilliseconds = 400;
+    private const long ShortTermWindowMilliseconds = 3000;
 
     private readonly int _channels;
     private readonly int _sampleRate;
@@ -18,6 +20,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
     private readonly bool _preallocate;
     private readonly nuint _samplesIn100ms;
     private readonly KWeighting _weighting;
+    private readonly long _historyCeiling;
 
     private readonly StateMemory _memory;
     private MeterBuffers _buffers;
@@ -109,9 +112,10 @@ public sealed unsafe class LoudnessMeter : IDisposable
 
         InitializeChannelMap();
 
-        _history = options.MaxHistoryMilliseconds;
-        _blocks.Initialize((nuint)(_history / 100), _preallocate);
-        _shortTermBlocks.Initialize((nuint)(_history / 3000), _preallocate);
+        _history = ClampHistory(options.MaxHistoryMilliseconds);
+        _historyCeiling = _history;
+        _blocks.Initialize(GatingBlockCapacity(_history), _preallocate);
+        _shortTermBlocks.Initialize(ShortTermBlockCapacity(_history), _preallocate);
 
         _neededFrames = _samplesIn100ms * 4;
         _audioDataIndex = 0;
@@ -152,6 +156,23 @@ public sealed unsafe class LoudnessMeter : IDisposable
     internal ulong GetBlockHistogramBin(int index) => _buffers.BlockHistogram[index];
 
     internal ulong GetShortTermHistogramBin(int index) => _buffers.ShortTermHistogram[index];
+
+    private long ClampHistory(long milliseconds)
+    {
+        if ((_modes & LoudnessModes.LoudnessRange) == LoudnessModes.LoudnessRange
+            && milliseconds < ShortTermWindowMilliseconds)
+        {
+            return ShortTermWindowMilliseconds;
+        }
+
+        return milliseconds < MomentaryWindowMilliseconds
+            ? MomentaryWindowMilliseconds
+            : milliseconds;
+    }
+
+    private static nuint GatingBlockCapacity(long history) => (nuint)(history / 100);
+
+    private static nuint ShortTermBlockCapacity(long history) => (nuint)(history / 3000);
 
     private nuint ComputeAudioDataFrames(long window)
     {
@@ -838,15 +859,14 @@ public sealed unsafe class LoudnessMeter : IDisposable
         ThrowIfUnusable(LoudnessModes.None);
         ArgumentOutOfRangeException.ThrowIfNegative(milliseconds);
 
-        if ((_modes & LoudnessModes.LoudnessRange) == LoudnessModes.LoudnessRange
-            && milliseconds < 3000)
+        milliseconds = ClampHistory(milliseconds);
+
+        if (_preallocate && milliseconds > _historyCeiling)
         {
-            milliseconds = 3000;
-        }
-        else if ((_modes & LoudnessModes.Momentary) == LoudnessModes.Momentary
-            && milliseconds < 400)
-        {
-            milliseconds = 400;
+            throw new InvalidOperationException(
+                $"A meter created with {nameof(LoudnessMeterOptions.PreallocateHistory)} "
+                + $"cannot extend its history beyond the {_historyCeiling} milliseconds "
+                + "it reserved at construction.");
         }
 
         if (milliseconds == _history)
@@ -855,8 +875,8 @@ public sealed unsafe class LoudnessMeter : IDisposable
         }
 
         _history = milliseconds;
-        _blocks.Trim((nuint)(_history / 100));
-        _shortTermBlocks.Trim((nuint)(_history / 3000));
+        _blocks.Trim(GatingBlockCapacity(milliseconds));
+        _shortTermBlocks.Trim(ShortTermBlockCapacity(milliseconds));
     }
 
     public void Dispose()
