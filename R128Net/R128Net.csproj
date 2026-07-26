@@ -21,6 +21,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>ebur128;r128;loudness;lufs;lra;true-peak;bs1770;audio;dsp;native-aot;zero-allocation</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageReleaseNotes>See https://github.com/routersys/R128Net/releases</PackageReleaseNotes>
   </PropertyGroup>
@@ -35,6 +36,7 @@
 
   <ItemGroup>
     <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\icon.png" Pack="true" PackagePath="\" />
     <None Include="..\.github\LICENSE\libebur128.txt" Pack="true" PackagePath="THIRD-PARTY-NOTICES\" />
   </ItemGroup>
 
