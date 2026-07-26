@@ -109,7 +109,9 @@ The histogram algorithm quantises block energies into 1000 bins of 0.1 LU and is
 
 The filtered ring buffer, the filter state, the channel map, the peak arrays, the histograms and the interpolator all live in one aligned native block allocated at construction. A type marked with `[StateLayout]` declares its requirement once as a `Layout` method generic over an allocator. Running it with the measuring allocator yields the required byte count without touching memory, and running it with the binding allocator performs the actual binding. The source generator emits `GetRequiredBytes` and `Bind` from that single signature.
 
-The block energy history grows geometrically in native memory by default, which reproduces the effectively unbounded history of the original. `PreallocateHistory` sizes it once from the requested maximum history instead, after which the measurement performs no allocation of any kind.
+The block energy history grows geometrically in native memory by default, which reproduces the effectively unbounded history of the original. `PreallocateHistory` sizes it once from the requested maximum history instead, together with the scratch that loudness range sorts into, after which neither measuring nor querying allocates anything.
+
+`Reset` returns a meter to its as-constructed measurement state while keeping the channel map, the window and the history. Measuring a sequence of candidates therefore costs one construction rather than one per candidate, which is the supported way to reuse a meter.
 
 The absence of managed allocation is measured, not asserted. `GC.GetAllocatedBytesForCurrentThread` reports a delta of zero bytes across `AddFrames` for all four input formats and across every query, including the sort that loudness range performs.
 
@@ -134,7 +136,7 @@ Those figures hold for eight configurations: stereo, five-channel surround, dual
 
 The transcendental functions are measured separately. `Math.Tan` and `Math.Log` return exactly the same doubles as the MSVC runtime over 20000 sampled arguments each. `Math.Pow` differs by at most one unit in the last place on fewer than one in a thousand of the sampled inputs, which is why the histogram boundary table is embedded rather than computed.
 
-The suite contains 131 tests and all of them pass.
+The suite contains 170 tests and all of them pass. Beyond the comparison against the original, they cover the disposal and mode contract of every public member, the validation of every argument, and the requirement that a meter which has been reset produce results identical to a freshly constructed one across all of the configurations above.
 
 ### 7. Performance
 
@@ -196,6 +198,9 @@ using LoudnessMeter meter = new(channels: 2, sampleRate: 48000, LoudnessModes.Al
 | `LoudnessMeter(int, int, LoudnessModes, in LoudnessMeterOptions)` | Creates a meter with explicit options |
 | `Channels`, `SampleRate`, `Modes` | The configuration the meter was created with |
 | `MaxWindowMilliseconds`, `MaxHistoryMilliseconds` | The current window and history |
+| `FramesProcessed` | Frames fed since construction or since the last `Reset` |
+| `Reset` | Clears the measurement and keeps the configuration |
+| `SetMaxHistory(long)` | Shortens or lengthens the retained history |
 | `Dispose` | Releases the native state |
 
 `LoudnessModes` reproduces the implied bits of the original: `ShortTerm` implies `Momentary`, `Integrated` implies `Momentary`, `LoudnessRange` implies `ShortTerm`, and `TruePeak` implies `SamplePeak`.
@@ -254,6 +259,7 @@ The default map assigns the BS.1770 layout for four and five channels, and other
 
 | Member | Default | Description |
 |---|---|---|
+| `MaxWindowMilliseconds` | 0 | The longest window `GetLoudnessOverWindow` may request. Zero means the minimum the requested modes need, which is 3000 with short term and 400 without |
 | `MaxHistoryMilliseconds` | 4294967295 | The history retained for integrated loudness and loudness range |
 | `PreallocateHistory` | `false` | Sizes the history once instead of growing it |
 | `UseUpstreamWindowOverflow` | `false` | Reproduces the integer overflow of the original on Windows |
@@ -266,7 +272,8 @@ The default map assigns the BS.1770 layout for four and five channels, and other
 - The histogram boundary table differs from the original at two of its 1001 entries by one unit in the last place. The embedded values are the correctly rounded ones; the MSVC `pow` is not, and `pow` is not required to be correctly rounded by IEEE 754. The difference is confined to the histogram algorithm.
 - `LoudnessMeter` is not thread-safe. Concurrent measurement requires one meter per thread, which the aggregation functions are designed for.
 - Sample rates at which the pre-filter diverges are rejected at construction rather than accepted as the original accepts them. Every rate from 3364 Hz upwards is accepted.
-- `ebur128_set_max_window` and `ebur128_change_parameters` are not ported. Both reallocate the audio buffer, and the equivalent is to create a new meter.
+- `ebur128_set_max_window` is replaced by `LoudnessMeterOptions.MaxWindowMilliseconds`, which fixes the size at construction rather than reallocating during a measurement. `ebur128_change_parameters` is not ported: it reallocates every buffer and discards the measurement, which is what constructing a new meter already does, and the upstream implementation of it is the one carrying the integer overflow described above.
+- Raising `MaxWindowMilliseconds` above the default for the requested modes changes how often the ring buffer wraps. The upstream summation visits the two halves of a wrapped block in the opposite order to an unwrapped one, so gated results move by a few units in the last place; four units were measured over twelve seconds of stereo. Peaks are unaffected, and the default window reproduces the original exactly.
 - Running the comparison tests requires the reference data. Without `reference/data` those tests cannot execute.
 - The sample application under `R128Net.Examples` writes to the console and therefore allocates managed memory. The zero-allocation guarantee applies to the library.
 
@@ -276,7 +283,7 @@ The default map assigns the BS.1770 layout for four and five channels, and other
 
 - Processing cost: true peak is by far the most expensive mode, accounting for the large majority of the total. Omitting it from the mode set is the single most effective way to speed up a measurement. Sample peak and gating are minor by comparison.
 - Denormal handling: the original enables the flush-to-zero bit of the MXCSR register while filtering. The .NET runtime exposes no equivalent, so the flush is emulated at the level of the individual operation. The emulation reproduces the state trajectory of the original through a silent decay exactly, and it also avoids the fifty-fold slowdown that denormal arithmetic would otherwise cause on silence.
-- Meter reuse: the state is allocated once at construction. Creating a meter for every buffer defeats the purpose and reintroduces native allocation.
+- Meter reuse: the state is allocated once at construction. Creating a meter for every buffer defeats the purpose and reintroduces native allocation. Call `Reset` between candidates instead; it clears the measurement without touching the configuration and without allocating.
 - Determinism: the measurement produces identical output across repeated runs and does not depend on the length of the buffers passed to `AddFrames`. The test suite feeds the same material one frame at a time and in bulk and compares the results bit for bit.
 - State layout: a type marked with `[StateLayout]` must expose a `Layout` method generic over `IStateAllocator`. The generator emits `GetRequiredBytes` and `Bind` with a matching parameter list, and skips whichever of the two the type already declares.
 - Native AOT: the library sets `IsAotCompatible`, which enables the trim, single-file and AOT analyzers. `publish-aot.bat` publishes the sample application for `win-x64` and requires the MSVC toolset for the native linker. It also places the Visual Studio installer directory on the path, because the linker probe of the AOT compiler fails when `vswhere.exe` cannot be resolved.
