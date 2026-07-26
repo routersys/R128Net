@@ -34,6 +34,12 @@ internal unsafe struct BlockEnergyList
         }
     }
 
+    public void Clear()
+    {
+        _head = 0;
+        _count = 0;
+    }
+
     public void Release()
     {
         if (_items is not null)
