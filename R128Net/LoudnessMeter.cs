@@ -125,6 +125,11 @@ public sealed unsafe class LoudnessMeter : IDisposable
         _blocks.Initialize(GatingBlockCapacity(_history), _preallocate);
         _shortTermBlocks.Initialize(ShortTermBlockCapacity(_history), _preallocate);
 
+        if (_preallocate)
+        {
+            ReserveSortScratch(ShortTermBlockCapacity(_history));
+        }
+
         _neededFrames = _samplesIn100ms * 4;
         _audioDataIndex = 0;
         _shortTermFrameCounter = 0;
@@ -778,7 +783,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
             return 0.0;
         }
 
-        double* values = owner.RentSortScratch(total);
+        double* values = owner.ReserveSortScratch(total);
         nuint written = 0;
 
         foreach (LoudnessMeter? meter in meters)
@@ -825,20 +830,22 @@ public sealed unsafe class LoudnessMeter : IDisposable
         return LoudnessMath.EnergyToLoudness(high) - LoudnessMath.EnergyToLoudness(low);
     }
 
-    private double* RentSortScratch(nuint count)
+    private double* ReserveSortScratch(nuint count)
     {
         if (count <= _sortCapacity)
         {
             return _sortScratch;
         }
 
+        double* replacement = (double*)NativeMemory.AlignedAlloc(
+            checked(count * (nuint)sizeof(double)), StateMemory.AlignmentBytes);
+
         if (_sortScratch is not null)
         {
             NativeMemory.AlignedFree(_sortScratch);
         }
 
-        _sortScratch = (double*)NativeMemory.AlignedAlloc(
-            checked(count * (nuint)sizeof(double)), StateMemory.AlignmentBytes);
+        _sortScratch = replacement;
         _sortCapacity = count;
         return _sortScratch;
     }
