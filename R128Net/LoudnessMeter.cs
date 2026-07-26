@@ -27,11 +27,12 @@ public sealed unsafe class LoudnessMeter : IDisposable
     private BlockEnergyList _blocks;
     private BlockEnergyList _shortTermBlocks;
 
-    private nuint _audioDataFrames;
+    private readonly nuint _audioDataFrames;
+    private readonly long _window;
+
     private nuint _audioDataIndex;
     private nuint _neededFrames;
     private nuint _shortTermFrameCounter;
-    private long _window;
     private long _history;
 
     private double* _sortScratch;
@@ -72,6 +73,13 @@ public sealed unsafe class LoudnessMeter : IDisposable
                 + "shelving section aliases past the Nyquist frequency.");
         }
 
+        if (options.MaxWindowMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options),
+                options.MaxWindowMilliseconds,
+                "The maximum window must not be negative.");
+        }
+
         if (options.MaxHistoryMilliseconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options),
@@ -87,13 +95,13 @@ public sealed unsafe class LoudnessMeter : IDisposable
         _preallocate = options.PreallocateHistory;
         _samplesIn100ms = (nuint)((sampleRate + 5) / 10);
 
-        _window = (modes & LoudnessModes.ShortTerm) == LoudnessModes.ShortTerm ? 3000 : 400;
+        _window = ClampWindow(options.MaxWindowMilliseconds, modes);
         _audioDataFrames = ComputeAudioDataFrames(_window);
 
         nuint samples = checked(_audioDataFrames * (nuint)channels);
         if (samples > int.MaxValue)
         {
-            throw new ArgumentOutOfRangeException(nameof(sampleRate), sampleRate,
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaxWindowMilliseconds,
                 "The requested window does not fit a single addressable buffer.");
         }
 
@@ -156,6 +164,15 @@ public sealed unsafe class LoudnessMeter : IDisposable
     internal ulong GetBlockHistogramBin(int index) => _buffers.BlockHistogram[index];
 
     internal ulong GetShortTermHistogramBin(int index) => _buffers.ShortTermHistogram[index];
+
+    private static long ClampWindow(long milliseconds, LoudnessModes modes)
+    {
+        long minimum = (modes & LoudnessModes.ShortTerm) == LoudnessModes.ShortTerm
+            ? ShortTermWindowMilliseconds
+            : MomentaryWindowMilliseconds;
+
+        return milliseconds < minimum ? minimum : milliseconds;
+    }
 
     private long ClampHistory(long milliseconds)
     {
@@ -465,7 +482,9 @@ public sealed unsafe class LoudnessMeter : IDisposable
         if (intervalFrames > _audioDataFrames)
         {
             throw new InvalidOperationException(
-                "The requested interval exceeds the configured window.");
+                $"The requested interval of {intervalFrames} frames exceeds the "
+                + $"{_audioDataFrames} frames held by the configured window. Raise "
+                + $"{nameof(LoudnessMeterOptions.MaxWindowMilliseconds)} when creating the meter.");
         }
 
         return BlockEnergy(intervalFrames);
