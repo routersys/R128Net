@@ -19,7 +19,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
     private readonly nuint _samplesIn100ms;
     private readonly KWeighting _weighting;
 
-    private StateMemory _memory;
+    private readonly StateMemory _memory;
     private MeterBuffers _buffers;
     private BlockEnergyList _blocks;
     private BlockEnergyList _shortTermBlocks;
@@ -120,7 +120,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
 
     ~LoudnessMeter()
     {
-        Release();
+        ReleaseNativeBuffers();
     }
 
     public int Channels => _channels;
@@ -175,6 +175,28 @@ public sealed unsafe class LoudnessMeter : IDisposable
         return frames;
     }
 
+    private void ThrowIfUnusable(LoudnessModes required)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if ((_modes & required) != required)
+        {
+            throw new InvalidOperationException(
+                $"This meter was created without the {required} mode.");
+        }
+    }
+
+    private int ValidateChannel(int channel)
+    {
+        if (channel < 0 || channel >= _channels)
+        {
+            throw new ArgumentOutOfRangeException(nameof(channel), channel,
+                "The channel index lies outside the configured channel count.");
+        }
+
+        return channel;
+    }
+
     private void InitializeChannelMap()
     {
         ChannelPosition* map = _buffers.ChannelMap;
@@ -214,13 +236,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
 
     public void SetChannel(int channel, ChannelPosition position)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (channel < 0 || channel >= _channels)
-        {
-            throw new ArgumentOutOfRangeException(nameof(channel), channel,
-                "The channel index lies outside the configured channel count.");
-        }
+        ThrowIfUnusable(LoudnessModes.None);
 
         if (position == ChannelPosition.DualMono && (_channels != 1 || channel != 0))
         {
@@ -229,20 +245,13 @@ public sealed unsafe class LoudnessMeter : IDisposable
                 nameof(position));
         }
 
-        _buffers.ChannelMap[channel] = position;
+        _buffers.ChannelMap[ValidateChannel(channel)] = position;
     }
 
     public ChannelPosition GetChannel(int channel)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (channel < 0 || channel >= _channels)
-        {
-            throw new ArgumentOutOfRangeException(nameof(channel), channel,
-                "The channel index lies outside the configured channel count.");
-        }
-
-        return _buffers.ChannelMap[channel];
+        ThrowIfUnusable(LoudnessModes.None);
+        return _buffers.ChannelMap[ValidateChannel(channel)];
     }
 
     public void AddFrames(ReadOnlySpan<short> interleaved)
@@ -269,7 +278,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
         where TFormat : struct, ISampleFormat<TSample>
         where TSample : unmanaged
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfUnusable(LoudnessModes.None);
 
         if (interleaved.Length % _channels != 0)
         {
@@ -452,7 +461,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ThrowIfUnusable(LoudnessModes.Momentary);
             return LoudnessOfEnergy(EnergyInInterval(_samplesIn100ms * 4));
         }
     }
@@ -461,20 +470,22 @@ public sealed unsafe class LoudnessMeter : IDisposable
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ThrowIfUnusable(LoudnessModes.ShortTerm);
             return LoudnessOfEnergy(EnergyInInterval(_samplesIn100ms * 30));
         }
     }
 
     public double GetLoudnessOverWindow(long windowMilliseconds)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfUnusable(LoudnessModes.Momentary);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowMilliseconds);
 
         if (windowMilliseconds > _window)
         {
             throw new ArgumentOutOfRangeException(nameof(windowMilliseconds),
                 windowMilliseconds,
-                "The requested window exceeds the configured maximum window.");
+                $"The requested window exceeds the {_window} millisecond maximum "
+                + "this meter was created with.");
         }
 
         nuint interval = _upstreamOverflow
@@ -508,8 +519,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            RequireIntegrated();
+            ThrowIfUnusable(LoudnessModes.Integrated);
 
             nuint counter = 0;
             double threshold = 0.0;
@@ -527,26 +537,19 @@ public sealed unsafe class LoudnessMeter : IDisposable
         }
     }
 
-    public double IntegratedLoudness
-    {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return GatedLoudness([this]);
-        }
-    }
+    public double IntegratedLoudness => GatedLoudness([this]);
 
-    public static double GatedLoudness(ReadOnlySpan<LoudnessMeter> meters)
+    public static double GatedLoudness(ReadOnlySpan<LoudnessMeter?> meters)
     {
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
-            meter?.RequireIntegrated();
+            meter?.ThrowIfUnusable(LoudnessModes.Integrated);
         }
 
         nuint counter = 0;
         double threshold = 0.0;
 
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
             meter?.AccumulateRelativeThreshold(ref counter, ref threshold);
         }
@@ -572,7 +575,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
         counter = 0;
         double gated = 0.0;
 
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
             if (meter is null)
             {
@@ -610,39 +613,21 @@ public sealed unsafe class LoudnessMeter : IDisposable
         return LoudnessMath.EnergyToLoudness(gated);
     }
 
-    private void RequireIntegrated()
-    {
-        if ((_modes & LoudnessModes.Integrated) != LoudnessModes.Integrated)
-        {
-            throw new InvalidOperationException(
-                "The integrated mode was not requested for this meter.");
-        }
-    }
-
-    private void RequireLoudnessRange()
-    {
-        if ((_modes & LoudnessModes.LoudnessRange) != LoudnessModes.LoudnessRange)
-        {
-            throw new InvalidOperationException(
-                "The loudness range mode was not requested for this meter.");
-        }
-    }
-
     public double LoudnessRange => LoudnessRangeOf([this]);
 
-    public static double LoudnessRangeOf(ReadOnlySpan<LoudnessMeter> meters)
+    public static double LoudnessRangeOf(ReadOnlySpan<LoudnessMeter?> meters)
     {
         bool useHistogram = false;
         bool first = true;
 
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
             if (meter is null)
             {
                 continue;
             }
 
-            meter.RequireLoudnessRange();
+            meter.ThrowIfUnusable(LoudnessModes.LoudnessRange);
 
             if (first)
             {
@@ -659,7 +644,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
         return useHistogram ? HistogramRange(meters) : SortedRange(meters);
     }
 
-    private static double HistogramRange(ReadOnlySpan<LoudnessMeter> meters)
+    private static double HistogramRange(ReadOnlySpan<LoudnessMeter?> meters)
     {
         Span<ulong> histogram = stackalloc ulong[HistogramTables.BinCount];
         histogram.Clear();
@@ -667,7 +652,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
         ulong total = 0;
         double power = 0.0;
 
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
             if (meter is null)
             {
@@ -732,12 +717,12 @@ public sealed unsafe class LoudnessMeter : IDisposable
         return LoudnessMath.EnergyToLoudness(high) - LoudnessMath.EnergyToLoudness(low);
     }
 
-    private static double SortedRange(ReadOnlySpan<LoudnessMeter> meters)
+    private static double SortedRange(ReadOnlySpan<LoudnessMeter?> meters)
     {
         nuint total = 0;
         LoudnessMeter? owner = null;
 
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
             if (meter is null)
             {
@@ -756,7 +741,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
         double* values = owner.RentSortScratch(total);
         nuint written = 0;
 
-        foreach (LoudnessMeter meter in meters)
+        foreach (LoudnessMeter? meter in meters)
         {
             if (meter is null)
             {
@@ -818,44 +803,21 @@ public sealed unsafe class LoudnessMeter : IDisposable
         return _sortScratch;
     }
 
-    private void RequirePeakMode(LoudnessModes required)
-    {
-        if ((_modes & required) != required)
-        {
-            throw new InvalidOperationException(
-                "The requested peak mode was not enabled for this meter.");
-        }
-    }
-
-    private int ValidateChannel(int channel)
-    {
-        if (channel < 0 || channel >= _channels)
-        {
-            throw new ArgumentOutOfRangeException(nameof(channel), channel,
-                "The channel index lies outside the configured channel count.");
-        }
-
-        return channel;
-    }
-
     public double GetSamplePeak(int channel)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        RequirePeakMode(LoudnessModes.SamplePeak);
+        ThrowIfUnusable(LoudnessModes.SamplePeak);
         return _buffers.SamplePeak[ValidateChannel(channel)];
     }
 
     public double GetPreviousSamplePeak(int channel)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        RequirePeakMode(LoudnessModes.SamplePeak);
+        ThrowIfUnusable(LoudnessModes.SamplePeak);
         return _buffers.PreviousSamplePeak[ValidateChannel(channel)];
     }
 
     public double GetTruePeak(int channel)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        RequirePeakMode(LoudnessModes.TruePeak);
+        ThrowIfUnusable(LoudnessModes.TruePeak);
         int index = ValidateChannel(channel);
         double truePeak = _buffers.TruePeak[index];
         double samplePeak = _buffers.SamplePeak[index];
@@ -864,8 +826,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
 
     public double GetPreviousTruePeak(int channel)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        RequirePeakMode(LoudnessModes.TruePeak);
+        ThrowIfUnusable(LoudnessModes.TruePeak);
         int index = ValidateChannel(channel);
         double truePeak = _buffers.PreviousTruePeak[index];
         double samplePeak = _buffers.PreviousSamplePeak[index];
@@ -874,7 +835,8 @@ public sealed unsafe class LoudnessMeter : IDisposable
 
     public void SetMaxHistory(long milliseconds)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfUnusable(LoudnessModes.None);
+        ArgumentOutOfRangeException.ThrowIfNegative(milliseconds);
 
         if ((_modes & LoudnessModes.LoudnessRange) == LoudnessModes.LoudnessRange
             && milliseconds < 3000)
@@ -899,19 +861,19 @@ public sealed unsafe class LoudnessMeter : IDisposable
 
     public void Dispose()
     {
-        Release();
-        GC.SuppressFinalize(this);
-    }
-
-    private void Release()
-    {
         if (_disposed)
         {
             return;
         }
 
         _disposed = true;
+        ReleaseNativeBuffers();
+        _memory.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
+    private void ReleaseNativeBuffers()
+    {
         _blocks.Release();
         _shortTermBlocks.Release();
 
@@ -921,7 +883,5 @@ public sealed unsafe class LoudnessMeter : IDisposable
             _sortScratch = null;
             _sortCapacity = 0;
         }
-
-        _memory?.Dispose();
     }
 }
