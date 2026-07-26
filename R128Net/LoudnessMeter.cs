@@ -112,11 +112,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
             channels, (int)samples, InterpolatorTaps, factor, bins));
         _buffers = MeterBuffers.Bind(
             _memory, channels, (int)samples, InterpolatorTaps, factor, bins);
-
-        if (factor > 0)
-        {
-            _buffers.Interpolator.Initialize(InterpolatorTaps, factor);
-        }
+        _buffers.Initialize(channels, (int)samples, InterpolatorTaps, factor, bins);
 
         InitializeChannelMap();
 
@@ -131,8 +127,6 @@ public sealed unsafe class LoudnessMeter : IDisposable
         }
 
         _neededFrames = _samplesIn100ms * 4;
-        _audioDataIndex = 0;
-        _shortTermFrameCounter = 0;
     }
 
     ~LoudnessMeter()
@@ -275,6 +269,19 @@ public sealed unsafe class LoudnessMeter : IDisposable
                 _ => ChannelPosition.Unused,
             };
         }
+    }
+
+    public void Reset()
+    {
+        ThrowIfUnusable(LoudnessModes.None);
+
+        _buffers.ClearMeasurementState();
+        _blocks.Clear();
+        _shortTermBlocks.Clear();
+
+        _audioDataIndex = 0;
+        _neededFrames = _samplesIn100ms * 4;
+        _shortTermFrameCounter = 0;
     }
 
     public void SetChannel(int channel, ChannelPosition position)
