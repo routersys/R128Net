@@ -33,6 +33,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
     private nuint _audioDataIndex;
     private nuint _neededFrames;
     private nuint _shortTermFrameCounter;
+    private long _framesProcessed;
     private long _history;
 
     private double* _sortScratch;
@@ -143,6 +144,8 @@ public sealed unsafe class LoudnessMeter : IDisposable
     public long MaxWindowMilliseconds => _window;
 
     public long MaxHistoryMilliseconds => _history;
+
+    public long FramesProcessed => _framesProcessed;
 
     internal nuint BlockCount => _blocks.Count;
 
@@ -282,6 +285,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
         _audioDataIndex = 0;
         _neededFrames = _samplesIn100ms * 4;
         _shortTermFrameCounter = 0;
+        _framesProcessed = 0;
     }
 
     public void SetChannel(int channel, ChannelPosition position)
@@ -337,10 +341,14 @@ public sealed unsafe class LoudnessMeter : IDisposable
                 nameof(interleaved));
         }
 
+        int frames = interleaved.Length / _channels;
+
         fixed (TSample* source = interleaved)
         {
-            AddCore<TFormat, TSample>(source, (nuint)(interleaved.Length / _channels));
+            AddCore<TFormat, TSample>(source, (nuint)frames);
         }
+
+        _framesProcessed += frames;
     }
 
     private void AddCore<TFormat, TSample>(TSample* source, nuint frames)
