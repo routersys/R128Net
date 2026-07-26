@@ -14,6 +14,10 @@ internal unsafe partial struct MeterBuffers
     public ulong* ShortTermHistogram;
     public Interpolator Interpolator;
 
+    public int Channels;
+    public int AudioDataSamples;
+    public int HistogramBins;
+
     public static void Layout<TAllocator>(
         ref TAllocator allocator,
         int channels,
@@ -39,6 +43,40 @@ internal unsafe partial struct MeterBuffers
         if (factor > 0)
         {
             Interpolator.Layout(ref allocator, taps, factor, channels, ref state.Interpolator);
+        }
+    }
+
+    public void Initialize(int channels, int audioDataSamples, int taps, int factor,
+        int histogramBins)
+    {
+        Channels = channels;
+        AudioDataSamples = audioDataSamples;
+        HistogramBins = histogramBins;
+
+        if (factor > 0)
+        {
+            Interpolator.Initialize(taps, factor);
+        }
+    }
+
+    public void ClearMeasurementState()
+    {
+        new Span<double>(AudioData, AudioDataSamples).Clear();
+        new Span<double>(FilterState, KWeightingFilter.StateTaps * Channels).Clear();
+        new Span<double>(SamplePeak, Channels).Clear();
+        new Span<double>(PreviousSamplePeak, Channels).Clear();
+        new Span<double>(TruePeak, Channels).Clear();
+        new Span<double>(PreviousTruePeak, Channels).Clear();
+
+        if (HistogramBins > 0)
+        {
+            new Span<ulong>(BlockHistogram, HistogramBins).Clear();
+            new Span<ulong>(ShortTermHistogram, HistogramBins).Clear();
+        }
+
+        if (Interpolator.Factor > 0)
+        {
+            Interpolator.Reset(Channels);
         }
     }
 }
