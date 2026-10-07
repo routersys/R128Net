@@ -8,6 +8,7 @@
     <File Path="CONTRIBUTING.ja.md" />
     <File Path="CONTRIBUTING.md" />
     <File Path="Directory.Build.props" />
+    <File Path="icon.png" />
     <File Path="LICENSE.txt" />
     <File Path="publish-aot.bat" />
     <File Path="README.ja.md" />
