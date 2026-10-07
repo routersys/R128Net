@@ -1,0 +1,53 @@
+name: 質問
+description: 何かをどう使うことになっているか、または観察した挙動が意図したものかを尋ねます。
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ライブラリが誤っていると既に考えているなら、代わりに不具合報告を立ててください。
+        見ている挙動が不具合なのか、意図した契約なのかがまだ分からないときに使ってください。
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 質問
+      description: 背景を書く前に、一、二文で直接尋ねてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: やろうとしていること
+      description: |
+        行き詰まっている手順だけでなく、目指している最終の目的を書いてください。答えが、現在の方法の
+        修正ではなく、別の方法になることがよくあります。
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 試したこと
+      description: 今あるコードと、望んだ結果の代わりに何が起きるかを書いてください。
+      render: csharp
+
+  - type: input
+    id: version
+    attributes:
+      label: パッケージの版数
+      placeholder: R128Net 1.1.0
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提出の前に
+      options:
+        - label: この領域を扱うREADMEの節を読みました。
+          required: true
+        - label: 同じ質問が無いか、既存のIssueを検索しました。
+          required: true
