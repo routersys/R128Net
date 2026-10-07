@@ -109,7 +109,7 @@ The histogram algorithm quantises block energies into 1000 bins of 0.1 LU and is
 
 The filtered ring buffer, the filter state, the channel map, the peak arrays, the histograms and the interpolator all live in one aligned native block allocated at construction. A type marked with `[StateLayout]` declares its requirement once as a `Layout` method generic over an allocator. Running it with the measuring allocator yields the required byte count without touching memory, and running it with the binding allocator performs the actual binding. The source generator emits `GetRequiredBytes` and `Bind` from that single signature.
 
-The block energy history grows geometrically in native memory by default, which reproduces the effectively unbounded history of the original. `PreallocateHistory` sizes it once from the requested maximum history instead, together with the scratch that loudness range sorts into, after which neither measuring nor querying allocates anything.
+The block energy history grows geometrically in native memory by default, which reproduces the effectively unbounded history of the original. `PreallocateHistory` sizes it once from the requested maximum history instead, together with the scratch that loudness range sorts into, after which neither measuring nor querying a single meter allocates anything. `LoudnessMeter.LoudnessRangeOf` over several meters sorts the blocks of all of them in the scratch of the first meter, so it allocates native memory once when the combined count exceeds what that meter reserved, and keeps the larger scratch for later queries.
 
 `Reset` returns a meter to its as-constructed measurement state while keeping the channel map, the window and the history. Measuring a sequence of candidates therefore costs one construction rather than one per candidate, which is the supported way to reuse a meter.
 
@@ -136,7 +136,7 @@ Those figures hold for eight configurations: stereo, five-channel surround, dual
 
 The transcendental functions are measured separately. `Math.Tan` and `Math.Log` return exactly the same doubles as the MSVC runtime over 20000 sampled arguments each. `Math.Pow` differs by at most one unit in the last place on fewer than one in a thousand of the sampled inputs, which is why the histogram boundary table is embedded rather than computed.
 
-The suite contains 196 tests and all of them pass. Beyond the comparison against the original, they cover the disposal and mode contract of every public member, the validation of every argument, the requirement that a meter which has been reset produce results identical to a freshly constructed one across all of the configurations above, and the agreement of every fast path with a plain reference implementation.
+The suite contains 217 tests and all of them pass. Beyond the comparison against the original, they cover the disposal and mode contract of every public member, the validation of every argument, the requirement that a meter which has been reset produce results identical to a freshly constructed one across all of the configurations above, and the agreement of every fast path with a plain reference implementation.
 
 ### 7. Performance
 
@@ -281,9 +281,9 @@ The default map assigns the BS.1770 layout for four and five channels, and other
 
 | Member | Default | Description |
 |---|---|---|
-| `MaxWindowMilliseconds` | 0 | The longest window `GetLoudnessOverWindow` may request. Zero means the minimum the requested modes need, which is 3000 with short term and 400 without |
+| `MaxWindowMilliseconds` | 0 | The longest window `GetLoudnessOverWindow` may request. Zero means the minimum the requested modes need, which is 3000 with short term and 400 without. A window whose frame count does not fit, or wraps to fewer frames than 400 milliseconds, is rejected with `ArgumentOutOfRangeException` |
 | `MaxHistoryMilliseconds` | 4294967295 | The history retained for integrated loudness and loudness range |
-| `PreallocateHistory` | `false` | Sizes the history once instead of growing it |
+| `PreallocateHistory` | `false` | Sizes the history once instead of growing it. With the default `MaxHistoryMilliseconds` this reserves about 350 MB at construction, so set a history of the length that is needed |
 | `UseUpstreamWindowOverflow` | `false` | Reproduces the integer overflow of the original on Windows |
 
 ---
