@@ -1,0 +1,66 @@
+name: 文書
+description: 誤っている、足りない、またはライブラリの動作と食い違っている文書を報告します。
+title: "[Docs] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        コードと食い違っている文書は、言い回しの好みではなく、不具合として扱います。
+        どちらが正しいと考えるかを書いてください。それによって、修正が文章に入るのか、
+        実装に入るのかが決まります。
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: 場所
+      options:
+        - README
+        - README.ja
+        - NuGetのパッケージの説明
+        - サンプルアプリケーション R128Net.Examples
+        - 例外のメッセージ
+        - CONTRIBUTING や SECURITY などのコミュニティ向けのファイル
+    validations:
+      required: true
+
+  - type: input
+    id: reference
+    attributes:
+      label: 正確な位置
+      description: 見出し、行を添えたファイルのパス、ページのアドレス、メンバー名、例外のメッセージのいずれかです。
+      placeholder: README.ja.md, 制限事項, 最初の項目
+    validations:
+      required: true
+
+  - type: textarea
+    id: says
+    attributes:
+      label: 今の記述
+      description: 引用してください。ソースを開かなくても、変更を査読できるようにするためです。
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 何が問題か
+      description: |
+        不正確か、不完全か、曖昧か。そのために読み手が何を誤るか。動作と食い違う場合は、
+        どちらを変えるべきと考えるかも書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 提案する文言
+      description: 任意です。ただし、具体的な置き換え案があると、たいてい最も早く片付きます。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提出の前に
+      options:
+        - label: 保存された写しではなく、最新の公開版の文書を確認しました。
+          required: true
