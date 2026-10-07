@@ -48,6 +48,32 @@ jobs:
           echo "バージョン  : ${{ steps.parse.outputs.version }}"
           echo "プレリリース: ${{ steps.parse.outputs.is_prerelease }}"
 
+      - name: バージョン記載の照合
+        shell: pwsh
+        run: |
+          $tag     = "${{ github.ref_name }}"
+          $version = "${{ steps.parse.outputs.version }}"
+          $problems = @()
+
+          $projectPath = "R128Net/R128Net.csproj"
+          $text = Get-Content $projectPath -Raw
+          if (-not $text.Contains("<Version>$version</Version>")) {
+            $current = "記載なし"
+            if ($text -match "<Version>([^<]*)</Version>") { $current = $Matches[1] }
+            $problems += "$projectPath の <Version> が $current です。$version にしてください。"
+          }
+
+          if ($problems.Count -eq 0) {
+            Write-Host "バージョン記載は $tag と一致しています"
+            exit 0
+          }
+
+          foreach ($problem in $problems) {
+            Write-Host "::error::$problem"
+          }
+          Write-Host "::error::リリースの対象は $tag が指すコミットです。タグを付けた後で main へ訂正を積んでも、その訂正はリリースに入りません。タグを削除し、記載を直したコミットを積んでから付け直してください。"
+          exit 1
+
       - name: .NET SDK をセットアップ
         uses: actions/setup-dotnet@v4
         with:
