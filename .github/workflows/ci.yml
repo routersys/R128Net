@@ -58,6 +58,16 @@ jobs:
             --logger "trx;LogFileName=results.trx" \
             --results-directory ./test-results
 
+      - name: AVX2 を無効にしてテストを実行
+        run: dotnet test R128Net.slnx -c Release --no-build
+        env:
+          DOTNET_EnableAVX2: "0"
+
+      - name: ハードウェア命令を無効にしてテストを実行
+        run: dotnet test R128Net.slnx -c Release --no-build
+        env:
+          DOTNET_EnableHWIntrinsic: "0"
+
       - name: テスト結果をアップロード
         if: always()
         uses: actions/upload-artifact@v4
