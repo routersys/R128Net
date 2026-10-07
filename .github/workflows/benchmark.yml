@@ -25,7 +25,7 @@ env:
 
 jobs:
   benchmark:
-    name: 原典CとNativeAOTを同一環境で比較
+    name: 原典CとNativeAOTとJITを同一環境で比較
     runs-on: windows-latest
     defaults:
       run:
@@ -65,6 +65,9 @@ jobs:
         shell: cmd
         run: publish-aot.bat
 
+      - name: 実行例を JIT 用にビルド
+        run: dotnet build R128Net.Examples/R128Net.Examples.csproj -c Release
+
       - name: 計測を実行して README を更新
         run: |
           AOT=$(find R128Net.Examples/bin -name R128Net.Examples.exe -path "*publish*" -print -quit)
@@ -76,6 +79,7 @@ jobs:
           python .github/scripts/benchmark.py \
             --native reference/r128ref.exe \
             --aot "${AOT}" \
+            --jit R128Net.Examples/bin/Release/net10.0/R128Net.Examples.dll \
             --runs "${{ inputs.runs || '20' }}" \
             --readme README.md \
             --readme-ja README.ja.md \
