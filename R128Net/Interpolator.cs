@@ -20,6 +20,7 @@ internal unsafe partial struct Interpolator
     public double* Coefficients;
     public double* History;
     public int DensePhaseCount;
+    public double DenseBound;
 
     public static int GetDelay(int taps, int factor)
     {
@@ -76,6 +77,34 @@ internal unsafe partial struct Interpolator
         }
 
         DensePhaseCount = MeasureDensePhases();
+        DenseBound = MeasureDenseBound();
+    }
+
+    private double MeasureDenseBound()
+    {
+        if (DensePhaseCount != 3)
+        {
+            return 0.0;
+        }
+
+        int width = Counts[1];
+        double bound = Math.Abs(Coefficients[0]);
+
+        for (int f = 1; f <= DensePhaseCount; ++f)
+        {
+            double sum = 0.0;
+            for (int t = 0; t < width; ++t)
+            {
+                sum += Math.Abs(Coefficients[(f * Delay) + t]);
+            }
+
+            if (sum > bound)
+            {
+                bound = sum;
+            }
+        }
+
+        return bound * (1.0 + 1e-12);
     }
 
     private int MeasureDensePhases()
@@ -167,6 +196,9 @@ internal unsafe partial struct Interpolator
         double* second = Coefficients + (2 * delay);
         double* third = Coefficients + (3 * delay);
 
+        bool bounded = width <= 12 && delay >= 12;
+        Vector256<double> bound = Vector256.Create(DenseBound);
+
         double* lanes = stackalloc double[channels * 4];
         for (int i = 0; i < channels * 4; ++i)
         {
@@ -190,10 +222,23 @@ internal unsafe partial struct Interpolator
 
                 double* origin = work + delay;
                 Vector256<double> lane = Vector256.Load(lanes + (channel * 4));
+                Vector256<double> floor = Vector256.Create(peaks[channel]);
 
                 for (int n = 0; n < count; n += 4)
                 {
                     double* tap = origin + n;
+
+                    if (bounded && n + 4 <= count)
+                    {
+                        Vector256<double> window = Raise(
+                            Raise(Vector256.Abs(Vector256.Load(tap)), Vector256.Abs(Vector256.Load(tap - 4))),
+                            Raise(Vector256.Abs(Vector256.Load(tap - 8)), Vector256.Abs(Vector256.Load(tap - 12))));
+
+                        if (Vector256.LessThanOrEqualAll(window * bound, Raise(lane, floor)))
+                        {
+                            continue;
+                        }
+                    }
 
                     Vector256<double> firstPhase = Vector256<double>.Zero;
                     Vector256<double> secondPhase = Vector256<double>.Zero;

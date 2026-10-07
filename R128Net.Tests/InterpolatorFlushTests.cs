@@ -104,6 +104,173 @@ public class InterpolatorFlushTests
         };
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public unsafe void PeakBoundSkippingKeepsTheResultExactAtTheBoundary(int channels)
+    {
+        using StateMemory denseMemory =
+            new(Interpolator.GetRequiredBytes(Taps, Factor, channels));
+        Interpolator dense = Interpolator.Bind(denseMemory, Taps, Factor, channels);
+        dense.Initialize(Taps, Factor);
+
+        int width = dense.Counts[1];
+        double bound = 0.0;
+        for (int f = 1; f <= 3; ++f)
+        {
+            double sum = 0.0;
+            for (int t = 0; t < width; ++t)
+            {
+                sum += Math.Abs(dense.Coefficients[(f * dense.Delay) + t]);
+            }
+
+            bound = Math.Max(bound, sum);
+        }
+
+        Assert.True(dense.DenseBound >= bound * (1.0 + 1e-13));
+        Assert.True(dense.DenseBound <= bound * (1.0 + 1e-9));
+
+        FlushingOracle tracker = new(dense, channels);
+        double[] reached = new double[channels];
+
+        List<double> samples = [];
+
+        void Append(List<double> segment)
+        {
+            double[] block = [.. segment];
+            tracker.Accumulate(block, 0, block.Length / channels, reached);
+            samples.AddRange(block);
+        }
+
+        List<double> loud = [];
+        for (int i = 0; i < 400; ++i)
+        {
+            for (int c = 0; c < channels; ++c)
+            {
+                loud.Add(0.9 * Math.Sin(2.0 * Math.PI * 1000.0 * i / 48000.0 + c));
+            }
+        }
+
+        for (int i = 0; i < 60 * channels; ++i)
+        {
+            loud.Add(0.0);
+        }
+
+        Append(loud);
+
+        foreach (double factor in new[] { 0.5, 0.999, 0.999999, 1.0, 1.000001, 1.001, 1.5 })
+        {
+            double magnitude = reached[0] / bound * factor;
+            List<double> segment = [];
+
+            for (int k = 0; k < width; ++k)
+            {
+                double sign = dense.Coefficients[(2 * dense.Delay) + (width - 1 - k)] < 0.0 ? -1.0 : 1.0;
+                for (int c = 0; c < channels; ++c)
+                {
+                    segment.Add(sign * magnitude * (c == 0 ? 1.0 : 0.5));
+                }
+            }
+
+            for (int k = 0; k < 60 * channels; ++k)
+            {
+                segment.Add(0.0);
+            }
+
+            Append(segment);
+        }
+
+        double[] input = [.. samples];
+        int frames = input.Length / channels;
+
+        foreach (int chunk in new[] { frames, 4800, 255, 64, 61, 4 })
+        {
+            using StateMemory memory = new(Interpolator.GetRequiredBytes(Taps, Factor, channels));
+            Interpolator candidate = Interpolator.Bind(memory, Taps, Factor, channels);
+            candidate.Initialize(Taps, Factor);
+
+            FlushingOracle oracle = new(candidate, channels);
+            double[] expected = new double[channels];
+            double[] actual = new double[channels];
+
+            fixed (double* source = input)
+            fixed (double* peak = actual)
+            {
+                for (int offset = 0; offset < frames; offset += chunk)
+                {
+                    int take = Math.Min(chunk, frames - offset);
+                    oracle.Accumulate(input, offset, take, expected);
+                    candidate.AccumulatePeaksDense<DoubleFormat, double>(
+                        source + (offset * channels), peak, channels, take);
+
+                    BitwiseAssert.Equal(expected, actual,
+                        $"{channels} channels, chunk {chunk}, after frame {offset + take}");
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(1, 1u)]
+    [InlineData(2, 2u)]
+    [InlineData(2, 3u)]
+    [InlineData(5, 4u)]
+    public unsafe void SparseSpikesAfterALargePeakKeepTheResultExact(int channels, uint seed)
+    {
+        const int Frames = 30000;
+
+        double[] input = new double[Frames * channels];
+        uint state = 2463534242u + (seed * 7919u);
+        for (int frame = 0; frame < Frames; ++frame)
+        {
+            for (int c = 0; c < channels; ++c)
+            {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                double unit = ((state / 4294967296.0) * 2.0) - 1.0;
+                double value = unit * 0.01;
+
+                if (frame < 400)
+                {
+                    value = 0.9 * Math.Sin(2.0 * Math.PI * 1000.0 * frame / 48000.0 + c);
+                }
+                else if ((state >> 20) % 97u == 0u)
+                {
+                    value = unit * (((state >> 8) % 1000u) / 1000.0);
+                }
+
+                input[(frame * channels) + c] = value;
+            }
+        }
+
+        foreach (int chunk in new[] { Frames, 4800, 977, 64, 63, 5 })
+        {
+            using StateMemory memory = new(Interpolator.GetRequiredBytes(Taps, Factor, channels));
+            Interpolator candidate = Interpolator.Bind(memory, Taps, Factor, channels);
+            candidate.Initialize(Taps, Factor);
+
+            FlushingOracle oracle = new(candidate, channels);
+            double[] expected = new double[channels];
+            double[] actual = new double[channels];
+
+            fixed (double* source = input)
+            fixed (double* peak = actual)
+            {
+                for (int offset = 0; offset < Frames; offset += chunk)
+                {
+                    int take = Math.Min(chunk, Frames - offset);
+                    oracle.Accumulate(input, offset, take, expected);
+                    candidate.AccumulatePeaksDense<DoubleFormat, double>(
+                        source + (offset * channels), peak, channels, take);
+
+                    BitwiseAssert.Equal(expected, actual,
+                        $"{channels} channels, seed {seed}, chunk {chunk}, after frame {offset + take}");
+                }
+            }
+        }
+    }
+
     private static double[] BuildInput(int channels, int frames, uint seed)
     {
         double[] input = new double[frames * channels];
