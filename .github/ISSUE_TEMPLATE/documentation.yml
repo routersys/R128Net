@@ -1,0 +1,66 @@
+name: Documentation
+description: Report documentation that is wrong, missing, or contradicts what the library does.
+title: "[Docs] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Documentation that contradicts the code is treated as a defect, not as a wording preference.
+        Say which of the two you believe is right, because that decides whether the fix lands in the
+        prose or in the implementation.
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: Where
+      options:
+        - README
+        - README.ja
+        - Package description on NuGet
+        - Sample application R128Net.Examples
+        - Exception message
+        - Community files such as CONTRIBUTING or SECURITY
+    validations:
+      required: true
+
+  - type: input
+    id: reference
+    attributes:
+      label: Exact location
+      description: A heading, a file path with a line, a page address, a member name, or an exception message.
+      placeholder: README.md, Limitations, the first item
+    validations:
+      required: true
+
+  - type: textarea
+    id: says
+    attributes:
+      label: What it says now
+      description: Quote it, so that the change can be reviewed without opening the source.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong with it
+      description: |
+        Whether it is inaccurate, incomplete, or ambiguous, and what a reader would get wrong because
+        of it. If it contradicts the behavior, say which one you think should change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested wording
+      description: Optional, but a concrete replacement is usually the fastest way to close this.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the latest released documentation, not a cached copy.
+          required: true
