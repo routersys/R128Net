@@ -290,6 +290,11 @@ internal unsafe partial struct Interpolator
                 Vector256.Abs(Vector256.Load(single - 4))),
             Vector256.Abs(Vector256.Load(single)));
         float magnitude = Highest(window);
+        if (magnitude == 0.0f)
+        {
+            return true;
+        }
+
         float room = threshold - (MarginFloor + (MarginScale * magnitude));
 
         float* head = single - headStart;
