@@ -94,6 +94,16 @@ public class InterpolatorFlushTests
         }
     }
 
+    private static double NonFinite(uint seed, int channel)
+    {
+        return (seed >> 5) % 3u switch
+        {
+            0u => double.PositiveInfinity,
+            1u => double.NegativeInfinity,
+            _ => double.NaN,
+        };
+    }
+
     private static double[] BuildInput(int channels, int frames, uint seed)
     {
         double[] input = new double[frames * channels];
@@ -108,7 +118,7 @@ public class InterpolatorFlushTests
                 seed ^= seed >> 17;
                 seed ^= seed << 5;
                 amplitude = Amplitudes[(int)(seed % (uint)Amplitudes.Length)];
-                mode = (int)((seed >> 8) % 4u);
+                mode = (int)((seed >> 8) % 5u);
             }
 
             for (int c = 0; c < channels; ++c)
@@ -124,7 +134,8 @@ public class InterpolatorFlushTests
                     1 => ((frame + c) % 2 == 0 ? 1.0 : -1.0) * amplitude,
                     2 => BitConverter.Int32BitsToSingle(
                         0x007FFFFE + (int)((seed >> 4) % 4u)) * (unit < 0.0 ? -1.0 : 1.0),
-                    _ => amplitude * (1.0 + (unit * 1e-6)),
+                    3 => amplitude * (1.0 + (unit * 1e-6)),
+                    _ => frame % 5 == 0 ? NonFinite(seed, c) : unit * amplitude,
                 };
 
                 input[(frame * channels) + c] = value;
