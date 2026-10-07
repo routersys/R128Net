@@ -34,8 +34,7 @@ internal static unsafe class SamplePeak
 
             for (int i = 0; i < frames; ++i)
             {
-                double current = TFormat.ToRaw(source[(i * channels) + channel]);
-                double magnitude = current > -current ? current : -current;
+                double magnitude = Math.Abs(TFormat.ToRaw(source[(i * channels) + channel]));
                 if (magnitude > max)
                 {
                     max = magnitude;
@@ -99,8 +98,7 @@ internal static unsafe class SamplePeak
 
             for (int tail = index + channel; tail < total; tail += channels)
             {
-                double current = TFormat.ToRaw(source[tail]);
-                double magnitude = current > -current ? current : -current;
+                double magnitude = Math.Abs(TFormat.ToRaw(source[tail]));
                 if (magnitude > max)
                 {
                     max = magnitude;
