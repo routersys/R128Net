@@ -130,7 +130,7 @@ A fast path that skips a computation or reorders arithmetic must keep every resu
 
 ### Vector code paths
 
-CI runs the whole test suite normally, with `DOTNET_EnableAVX2=0`, and with `DOTNET_EnableHWIntrinsic=0`. For a change to a vectorized routine, run the tests with the same variables set.
+CI runs the whole test suite on Windows x64, Windows ARM64, Linux x64 and Linux ARM64. On x64 it runs normally, with `DOTNET_EnableAVX2=0` and with `DOTNET_EnableHWIntrinsic=0`; on ARM64, normally and with `DOTNET_EnableHWIntrinsic=0`. Windows x64 compares against dumps that the job regenerates with MSVC, and the other platforms compare against the committed dumps. The tests that call the platform's math library directly allow a difference of a few units in the last place off Windows x64; every other comparison is bit for bit everywhere. For a change to a vectorized routine, run the tests with the same variables set.
 
 ### Performance
 
