@@ -1,0 +1,90 @@
+name: 提案
+description: 新しい機能、新しい公開API、または既存の公開APIの変更を提案します。
+title: "[Proposal] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        R128Net は libebur128 の移植であり、出力を原典と照合して確かめています。また、測定は
+        マネージドメモリを確保しません。提案はこの二つに照らして判断するため、以下の結果とメモリの
+        確保についての質問が、結論を左右します。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 種別
+      options:
+        - 新しい公開API
+        - 既存の公開APIの変更
+        - 数値の結果の変更
+        - 新しいプラットフォームやターゲットフレームワークへの対応
+        - 性能
+        - ツール、パッケージ、文書
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題
+      description: |
+        今はできないことを、呼び出す側から書いてください。解決策ではなく、状況を書いてください。
+        APIしか書かれていない提案は、査読を通りにくくなります。
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 今は代わりに何をしているか
+      description: |
+        現在使っている回避策と、そのために払っている代償です。回避策が無い場合は、その旨と、
+        代わりに何をしているかを書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: surface
+    attributes:
+      label: 提案するAPI
+      description: |
+        C# のシグネチャだけを書いてください。追加する public のメンバーをすべて含めてください。
+        公開面が小さく、過不足が無いほうが、受け入れやすくなります。
+      render: csharp
+
+  - type: textarea
+    id: results
+    attributes:
+      label: 結果への影響
+      description: |
+        原典の libebur128 と異なる出力が生じるか。生じる場合は、どの値がどれだけ異なるかを書いてください。
+        異なる出力が無ければ「なし」と書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: allocation
+    attributes:
+      label: 確保への影響
+      description: |
+        マネージドメモリを確保する呼び出しが生じるか。ネイティブの状態ブロックがどれだけ大きくなるかも
+        書いてください。変わらなければ「なし」と書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 検討した代替案
+      description: 何もしないことも含めます。それでは足りない理由も書いてください。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提出の前に
+      options:
+        - label: 既存のIssueを検索し、重複でないことを確認しました。
+          required: true
+        - label: 現在の公開版が、すでにこれを提供していないことを確認しました。
+          required: true
