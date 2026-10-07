@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report / 脆弱性報告
+    url: https://github.com/routersys/R128Net/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue for it. 脆弱性は公開のIssueにせず、非公開で報告してください。
+  - name: Contributing guide / 貢献の手引き
+    url: https://github.com/routersys/R128Net/blob/main/CONTRIBUTING.md
+    about: How changes are built, tested and reviewed. Read this before opening a pull request. 変更をどう作り、確かめ、査読するか。プルリクエストの前に読んでください。
