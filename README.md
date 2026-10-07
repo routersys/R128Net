@@ -173,7 +173,7 @@ Measured by CI on a GitHub Actions `windows-latest` runner with AMD EPYC 9V45 96
 
 <!-- BENCHMARK:CI:END -->
 
-A ratio above 1.00 means this port is faster than the original C. The second table records the commit it was measured from, which predates the optimisations below, and is replaced the next time the workflow runs.
+A ratio above 1.00 means this port is faster than the original C. The second table records the commit it was measured from and is replaced the next time the workflow runs. The two tables were taken on different hardware, so their ratios differ.
 
 True peak is the largest cost, at about two fifths of the every-mode time in the stereo measurement above. Every optimisation below leaves the output bit-exact. The interpolator and the filter are each checked against a reference implementation that applies the flush after every operation, as the original does through the MXCSR register, and gating is checked against the scalar sum of the original.
 
