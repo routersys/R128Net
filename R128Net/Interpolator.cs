@@ -173,7 +173,8 @@ internal unsafe partial struct Interpolator
             lanes[i] = double.NegativeInfinity;
         }
 
-        for (int start = 0; start < frames; start += BlockFrames)
+        int start = 0;
+        while (start < frames)
         {
             int count = Math.Min(BlockFrames, frames - start);
 
@@ -242,6 +243,8 @@ internal unsafe partial struct Interpolator
                     work[j] = work[count + j];
                 }
             }
+
+            start += count;
         }
 
         for (int channel = 0; channel < channels; ++channel)
@@ -270,7 +273,7 @@ internal unsafe partial struct Interpolator
             peaks[channel] = peak;
         }
 
-        Position = (Position + frames) % delay;
+        Position = (int)((Position + (long)frames) % delay);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
