@@ -37,9 +37,10 @@ Correctness is not asserted from reading the source: every stage is compared aga
    - [Options](#options)
 6. [Limitations](#limitations)
 7. [Notes](#notes)
-8. [Disclaimer](#disclaimer)
-9. [Third-Party Licenses](#third-party-licenses)
-10. [License](#license)
+8. [Reporting issues](#reporting-issues)
+9. [Disclaimer](#disclaimer)
+10. [Third-Party Licenses](#third-party-licenses)
+11. [License](#license)
 
 ---
 
@@ -313,6 +314,26 @@ The default map assigns the BS.1770 layout for four and five channels, and other
 - State layout: a type marked with `[StateLayout]` must expose a `Layout` method generic over `IStateAllocator`. The generator emits `GetRequiredBytes` and `Bind` with a matching parameter list, and skips whichever of the two the type already declares.
 - Native AOT: the library sets `IsAotCompatible`, which enables the trim, single-file and AOT analyzers. `publish-aot.bat` publishes the sample application for `win-x64` and requires the MSVC toolset for the native linker. It also places the Visual Studio installer directory on the path, because the linker probe of the AOT compiler fails when `vswhere.exe` cannot be resolved.
 - Regenerating reference data: `reference/build.bat` clones libebur128 into `reference/ebur128-src`, verifies that the checkout is the pinned commit, builds it, and writes the dumps. The clone and the build output are excluded from version control.
+
+---
+
+## Reporting issues
+
+Report problems on GitHub [Issues](https://github.com/routersys/R128Net/issues). The library does not send any report automatically.
+
+Please include the following in the report.
+
+| Item | Content |
+|---|---|
+| Environment | The version of R128Net, the version of the .NET SDK or runtime, the operating system and the processor architecture |
+| Input | The sample format, the number of channels, the sampling rate and the number of frames, the length of each `AddFrames` call, and the modes requested |
+| Steps | The calls in the order they were made, including every option that differs from its default |
+| Result | The expected result and the actual result. For a numerical difference, the quantity and both values |
+| Exception | The type, the message and the stack trace, unmodified |
+
+Report a vulnerability privately as the [security policy](https://github.com/routersys/R128Net/blob/main/SECURITY.md) describes, not in an issue.
+
+To contribute a change, read the [contributing guide](https://github.com/routersys/R128Net/blob/main/CONTRIBUTING.md).
 
 ---
 
