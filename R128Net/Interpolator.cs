@@ -153,6 +153,7 @@ internal unsafe partial struct Interpolator
         where TSample : unmanaged
     {
         int delay = Delay;
+        int stride = 2 * delay;
         int width = Counts[1];
         int zeroIndex = Indices[0];
         double zeroCoefficient = Coefficients[0];
@@ -168,36 +169,62 @@ internal unsafe partial struct Interpolator
 
             for (int channel = 0; channel < channels; ++channel)
             {
-                double* line = History + channel;
+                double* ring = History + (channel * stride);
 
-                double head = Denormal.Flush((float)Denormal.Flush(
-                    TFormat.ToUnit(source[(frame * channels) + channel])));
-                double next = Denormal.Flush((float)Denormal.Flush(
-                    TFormat.ToUnit(source[((frame + 1) * channels) + channel])));
+                double head = Denormal.Flush(
+                    (float)TFormat.ToUnit(source[(frame * channels) + channel]));
+                double next = Denormal.Flush(
+                    (float)TFormat.ToUnit(source[((frame + 1) * channels) + channel]));
 
-                line[first * channels] = head;
-                line[firstBase * channels] = head;
-                line[second * channels] = next;
-                line[secondBase * channels] = next;
+                ring[first] = head;
+                ring[firstBase] = head;
+                ring[second] = next;
+                ring[secondBase] = next;
 
                 double peak = peaks[channel];
 
-                peak = Widen(line[(firstBase - zeroIndex) * channels] * zeroCoefficient, peak);
-                peak = Widen(line[(secondBase - zeroIndex) * channels] * zeroCoefficient, peak);
+                peak = Widen(ring[firstBase - zeroIndex] * zeroCoefficient, peak);
+                peak = Widen(ring[secondBase - zeroIndex] * zeroCoefficient, peak);
 
                 Vector256<double> headAccumulator = Vector256<double>.Zero;
                 Vector256<double> nextAccumulator = Vector256<double>.Zero;
 
-                for (int t = 0; t < width; ++t)
+                double* headTap = ring + firstBase;
+                double* nextTap = ring + secondBase;
+                double* packed = PackedCoefficients;
+
+                int t = 0;
+                for (; t + 4 <= width; t += 4)
                 {
-                    Vector256<double> coefficients =
-                        Vector256.Load(PackedCoefficients + (t * 4));
+                    Vector256<double> c0 = Vector256.Load(packed);
+                    Vector256<double> c1 = Vector256.Load(packed + 4);
+                    Vector256<double> c2 = Vector256.Load(packed + 8);
+                    Vector256<double> c3 = Vector256.Load(packed + 12);
 
-                    headAccumulator += Vector256.Create(line[(firstBase - t) * channels])
-                        * coefficients;
+                    headAccumulator += Vector256.Create(headTap[0]) * c0;
+                    nextAccumulator += Vector256.Create(nextTap[0]) * c0;
+                    headAccumulator += Vector256.Create(headTap[-1]) * c1;
+                    nextAccumulator += Vector256.Create(nextTap[-1]) * c1;
+                    headAccumulator += Vector256.Create(headTap[-2]) * c2;
+                    nextAccumulator += Vector256.Create(nextTap[-2]) * c2;
+                    headAccumulator += Vector256.Create(headTap[-3]) * c3;
+                    nextAccumulator += Vector256.Create(nextTap[-3]) * c3;
 
-                    nextAccumulator += Vector256.Create(line[(secondBase - t) * channels])
-                        * coefficients;
+                    headTap -= 4;
+                    nextTap -= 4;
+                    packed += 16;
+                }
+
+                for (; t < width; ++t)
+                {
+                    Vector256<double> coefficients = Vector256.Load(packed);
+
+                    headAccumulator += Vector256.Create(*headTap) * coefficients;
+                    nextAccumulator += Vector256.Create(*nextTap) * coefficients;
+
+                    --headTap;
+                    --nextTap;
+                    packed += 4;
                 }
 
                 peak = Widen(headAccumulator[0], peak);
@@ -219,23 +246,28 @@ internal unsafe partial struct Interpolator
 
             for (int channel = 0; channel < channels; ++channel)
             {
-                double* line = History + channel;
+                double* ring = History + (channel * stride);
 
-                double head = Denormal.Flush((float)Denormal.Flush(
-                    TFormat.ToUnit(source[(frame * channels) + channel])));
-                line[position * channels] = head;
-                line[origin * channels] = head;
+                double head = Denormal.Flush(
+                    (float)TFormat.ToUnit(source[(frame * channels) + channel]));
+                ring[position] = head;
+                ring[origin] = head;
 
                 double peak = peaks[channel];
 
-                peak = Widen(line[(origin - zeroIndex) * channels] * zeroCoefficient, peak);
+                peak = Widen(ring[origin - zeroIndex] * zeroCoefficient, peak);
 
                 Vector256<double> accumulator = Vector256<double>.Zero;
 
+                double* tap = ring + origin;
+                double* packed = PackedCoefficients;
+
                 for (int t = 0; t < width; ++t)
                 {
-                    accumulator += Vector256.Create(line[(origin - t) * channels])
-                        * Vector256.Load(PackedCoefficients + (t * 4));
+                    accumulator += Vector256.Create(*tap) * Vector256.Load(packed);
+
+                    --tap;
+                    packed += 4;
                 }
 
                 peak = Widen(accumulator[0], peak);
@@ -257,6 +289,7 @@ internal unsafe partial struct Interpolator
         where TSample : unmanaged
     {
         int delay = Delay;
+        int stride = 2 * delay;
         int factor = Factor;
         int position = Position;
 
@@ -264,11 +297,11 @@ internal unsafe partial struct Interpolator
         {
             for (int channel = 0; channel < channels; ++channel)
             {
-                double* line = History + channel;
+                double* ring = History + (channel * stride);
                 double head = Denormal.Flush(
-                    (float)Denormal.Flush(TFormat.ToUnit(source[(frame * channels) + channel])));
-                line[position * channels] = head;
-                line[(position + delay) * channels] = head;
+                    (float)TFormat.ToUnit(source[(frame * channels) + channel]));
+                ring[position] = head;
+                ring[position + delay] = head;
 
                 double peak = peaks[channel];
 
@@ -287,7 +320,7 @@ internal unsafe partial struct Interpolator
                             i += delay;
                         }
 
-                        accumulator += line[i * channels] * coefficients[t];
+                        accumulator += ring[i] * coefficients[t];
                     }
 
                     double magnitude = Math.Abs((double)Denormal.Flush((float)accumulator));
