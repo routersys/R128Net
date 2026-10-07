@@ -1,0 +1,181 @@
+name: 不具合報告
+description: ライブラリが文書化している挙動や保証と異なる動きを報告します。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        脆弱性はここへ書かないでください。前の画面の脆弱性報告のリンクを使ってください。
+        引数の値やバッファの内容で起きる異常終了や範囲外アクセスは、脆弱性の可能性があります。
+
+        報告が動くのは、他人が再現できるときだけです。以下の項目は、このライブラリで
+        再現できるかどうかを決めるものに絞ってあります。
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 領域
+      description: 挙動が現れる場所です。ご自身のコードではなく、失敗した箇所に近いものを選んでください。
+      options:
+        - 瞬間ラウドネス、短期ラウドネス、窓のラウドネス
+        - 統合ラウドネス、相対しきい値、ゲーティング
+        - ラウドネスレンジ
+        - サンプルピーク、トゥルーピーク
+        - ヒストグラムのアルゴリズム
+        - 複数のメーターの集約（GatedLoudness、LoudnessRangeOf）
+        - チャネルの割り当てと重み付け
+        - 構築、オプション、Reset、SetMaxHistory、Dispose
+        - ソースジェネレーター
+        - パッケージ、NuGet、Native AOT
+        - 判断がつかない
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: 症状
+      options:
+        - 例外が投げられる
+        - 結果が原典のlibebur128と異なる
+        - 結果が誤っているが、原典のlibebur128とは比べていない
+        - プロセスが異常終了する
+        - マネージドメモリの確保やメモリの増加が起きる
+        - 想定より遅い
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: パッケージの版数
+      description: 参照している R128Net パッケージの正確な版数を書いてください。
+      placeholder: R128Net 1.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した挙動
+      description: 何を期待したか。文書に根拠がある場合はその箇所も書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動
+      description: |
+        代わりに何が起きたか。例外が出た場合は種別とメッセージとスタックトレースを省略せずに貼ってください。
+        数値の差であれば、どの値か、両方の値を書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: |
+        問題を示す最小のコードです。既定値と異なるオプションはすべて含めてください。
+        これが無い報告は、情報不足として閉じられることが多くなります。
+      render: csharp
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: 入力
+      description: |
+        標本の形式（short、int、float、double）、チャネル数、標本化周波数、フレーム数、AddFrames の
+        1 回ごとの長さ、信号の作り方です。問題を再現する合成信号が最も望ましいです。
+        添付したファイルは誰でも見られるため、再配布する権利のある音声だけを添付してください。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: comparison
+    attributes:
+      label: 原典のlibebur128との比較
+      description: |
+        R128Net は libebur128 の移植です。原典も同じ挙動を示すなら、移植の不具合ではありません。
+        原典が同じ結果を返すかどうかで、この二つを分けます。ビット単位の一致を確かめているのは、
+        Windows x64 の MSVC でビルドした原典に対してだけです。
+      options:
+        - 原典のlibebur128は異なる結果を返す
+        - 原典のlibebur128は同じ結果を返す
+        - 比べていない
+        - 該当しない
+    validations:
+      required: true
+
+  - type: input
+    id: original
+    attributes:
+      label: 原典のlibebur128のビルド
+      description: 比べた場合だけ書いてください。libebur128 の版またはコミットと、コンパイラーとその版数です。
+      placeholder: libebur128 v1.2.6, MSVC 19.44
+
+  - type: input
+    id: runtime
+    attributes:
+      label: .NETランタイムとターゲットフレームワーク
+      description: |
+        プロセスを動かしているランタイムを dotnet --list-runtimes で調べたものと、ご自身のプロジェクトの
+        ターゲットフレームワークです。パッケージが含むのは net10.0 のビルドだけです。
+      placeholder: Microsoft.NETCore.App 10.0.0, target net10.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 実行方式
+      options:
+        - JIT
+        - ReadyToRun
+        - Native AOT
+        - WebAssembly
+        - 判断がつかない
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OSとアーキテクチャー
+      placeholder: Windows 11 24H2 x64, Ubuntu 24.04 ARM64
+    validations:
+      required: true
+
+  - type: input
+    id: processor
+    attributes:
+      label: プロセッサーとベクトル命令の対応
+      description: |
+        プロセッサーの型番、Avx2.IsSupported、Vector256.IsHardwareAccelerated、Vector128.IsHardwareAccelerated が
+        真かどうか、設定している DOTNET_Enable* 変数です。K 特性フィルタ、トゥルーピークの補間器、ゲーティングの総和は、
+        これらから実行経路を選びます。
+      placeholder: AMD EPYC 9V74, Avx2 true, Vector256 true, Vector128 true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: その他
+      description: |
+        確保や時間をどう測ったか、MaxWindowMilliseconds、MaxHistoryMilliseconds、PreallocateHistory の値、
+        チャネルの割り当て、メーターをスレッド間で共有しているか、その他関係すると思われることを書いてください。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提出の前に
+      options:
+        - label: 最新の公開版を使っています。使えない場合はその理由を上に書きました。
+          required: true
+        - label: 既存のIssueを検索し、重複でないことを確認しました。
+          required: true
+        - label: READMEの制限事項を読み、そこに挙げられた制限ではないことを確認しました。
+          required: true
