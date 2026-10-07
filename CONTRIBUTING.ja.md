@@ -128,7 +128,7 @@ Issue に添付したファイルは、誰でも見られます。音声は、�
 
 ### ベクトル化した処理の経路
 
-CI は、通常、`DOTNET_EnableAVX2=0`、`DOTNET_EnableHWIntrinsic=0` の 3 通りで、テスト全体を実行します。ベクトル化した処理を変えたときは、同じ環境変数を設定して手元でもテストを実行してください。
+CI は、Windows x64、Windows ARM64、Linux x64、Linux ARM64 で、テスト全体を実行します。x64 では、通常、`DOTNET_EnableAVX2=0`、`DOTNET_EnableHWIntrinsic=0` の 3 通りで、ARM64 では、通常と `DOTNET_EnableHWIntrinsic=0` の 2 通りです。Windows x64 はジョブが MSVC で再生成したダンプと比べ、ほかのプラットフォームはコミット済みのダンプと比べます。プラットフォームの数学ライブラリを直接呼ぶテストは、Windows x64 以外で最後の桁の数個分の差を許します。それ以外の比較は、どこでもビット単位です。ベクトル化した処理を変えたときは、同じ環境変数を設定して手元でもテストを実行してください。
 
 ### 性能
 
