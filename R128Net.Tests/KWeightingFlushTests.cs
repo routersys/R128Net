@@ -234,4 +234,14 @@ public class KWeightingFlushTests
         Compare(2, sampleRate, -1, vectorized: true, whole: true);
         Compare(5, sampleRate, -1, vectorized: true, whole: true);
     }
+
+    [Fact]
+    public void ThresholdConstantsHoldTheValuesTheArgumentNeeds()
+    {
+        Assert.Equal(
+            KWeightingFilter.SettledBits,
+            BitConverter.DoubleToInt64Bits(Math.ScaleB(1.0, -900)));
+        Assert.True(KWeightingFilter.SmallestCoefficient >= Math.ScaleB(1.0, -60));
+        Assert.True(KWeightingFilter.SmallestCoefficient < Math.ScaleB(1.0, -59));
+    }
 }
