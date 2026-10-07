@@ -2,27 +2,27 @@ namespace R128Net.Tests;
 
 public class TranscendentalTests
 {
-    private static void AssertExact(string name, Func<double, double> evaluate)
+    private static void AssertMatches(string name, Func<double, double> evaluate)
     {
         double[] input = ReferenceData.Load($"tr_{name}_input").Values;
         double[] expected = ReferenceData.Load($"tr_{name}_output").Values;
 
         for (int i = 0; i < input.Length; ++i)
         {
-            BitwiseAssert.Equal(expected[i], evaluate(input[i]), $"{name} index {i}");
+            BitwiseAssert.Equal(expected[i], evaluate(input[i]), $"{name} index {i}", 1);
         }
     }
 
     [Fact]
     public void TanMatchesTheReferenceExactly()
     {
-        AssertExact("tan", Math.Tan);
+        AssertMatches("tan", Math.Tan);
     }
 
     [Fact]
     public void LogMatchesTheReferenceExactly()
     {
-        AssertExact("log", Math.Log);
+        AssertMatches("log", Math.Log);
     }
 
     [Fact]

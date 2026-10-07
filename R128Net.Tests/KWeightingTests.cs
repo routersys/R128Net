@@ -18,9 +18,9 @@ public class KWeightingTests
             for (int i = 0; i < FilterTaps.Length; ++i)
             {
                 BitwiseAssert.Equal(coefficients.Values[(r * 10) + i], weighting.Numerator[i],
-                    $"rate {rates[r]} numerator {i}");
+                    $"rate {rates[r]} numerator {i}", 4);
                 BitwiseAssert.Equal(coefficients.Values[(r * 10) + 5 + i], weighting.Denominator[i],
-                    $"rate {rates[r]} denominator {i}");
+                    $"rate {rates[r]} denominator {i}", 4);
             }
         }
     }

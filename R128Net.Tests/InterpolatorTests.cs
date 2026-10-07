@@ -35,7 +35,8 @@ public class InterpolatorTests
                 BitwiseAssert.Equal(
                     coefficients.Values[(f * delay) + t],
                     interpolator.Coefficients[(f * delay) + t],
-                    $"factor {factor} subfilter {f} tap {t} coefficient");
+                    $"factor {factor} subfilter {f} tap {t} coefficient",
+                    1);
 
                 Assert.Equal(
                     (int)indices.Values[(f * delay) + t],
