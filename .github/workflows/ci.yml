@@ -7,10 +7,11 @@ on:
       - "*.md"
       - "docs/**"
   pull_request:
-    branches: ["main"]
+    branches: ["main", "develop"]
     paths-ignore:
       - "*.md"
       - "docs/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
