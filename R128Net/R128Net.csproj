@@ -35,9 +35,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\icon.png" Pack="true" PackagePath="\" />
-    <None Include="..\.github\LICENSE\libebur128.txt" Pack="true" PackagePath="THIRD-PARTY-NOTICES\" />
+    <None Include="..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\icon.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\.github\LICENSE\libebur128.txt" Pack="true" PackagePath="THIRD-PARTY-NOTICES\" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
