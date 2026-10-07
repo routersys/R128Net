@@ -197,7 +197,7 @@ public class InterpolatorScreenTests
         float[] history = new float[Base + 24];
         uint state = 88172645u;
         long passes = 0;
-        int rounds = Vector256.IsHardwareAccelerated ? 400000 : 40000;
+        int rounds = Vector128.IsHardwareAccelerated ? 400000 : 40000;
 
         for (int round = 0; round < rounds; ++round)
         {
