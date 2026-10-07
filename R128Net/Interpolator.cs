@@ -213,7 +213,50 @@ internal unsafe partial struct Interpolator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
-    private static void Convert<TFormat, TSample>(
+    internal static void ConvertBlock<TFormat, TSample>(
+        TSample* source, int channels, int count, float* history, int stride)
+        where TFormat : struct, ISampleFormat<TSample>
+        where TSample : unmanaged
+    {
+        int done = 0;
+
+        if (Avx2.IsSupported && channels == 1)
+        {
+            for (; done + 8 <= count; done += 8)
+            {
+                Denormal.Flush(TFormat.LoadSingles(source + done)).Store(history + done);
+            }
+        }
+        else if (Avx2.IsSupported && channels == 2)
+        {
+            float* right = history + stride;
+
+            for (; done + 8 <= count; done += 8)
+            {
+                TSample* pair = source + (2 * done);
+                Vector256<float> first = TFormat.LoadSingles(pair);
+                Vector256<float> second = TFormat.LoadSingles(pair + 8);
+
+                Vector256<float> left = Avx2.Permute4x64(
+                    Avx.Shuffle(first, second, 0x88).AsDouble(), 0xD8).AsSingle();
+                Vector256<float> other = Avx2.Permute4x64(
+                    Avx.Shuffle(first, second, 0xDD).AsDouble(), 0xD8).AsSingle();
+
+                Denormal.Flush(left).Store(history + done);
+                Denormal.Flush(other).Store(right + done);
+            }
+        }
+
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            Convert<TFormat, TSample>(
+                source + (done * channels) + channel, channels, count - done,
+                history + (channel * stride) + done);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
+    internal static void Convert<TFormat, TSample>(
         TSample* source, int stride, int count, float* destination)
         where TFormat : struct, ISampleFormat<TSample>
         where TSample : unmanaged
@@ -394,11 +437,12 @@ internal unsafe partial struct Interpolator
         {
             int count = Math.Min(BlockFrames, frames - start);
 
+            ConvertBlock<TFormat, TSample>(
+                source + (start * channels), channels, count, SingleHistory + delay, stride);
+
             for (int channel = 0; channel < channels; ++channel)
             {
                 float* singleOrigin = SingleHistory + (channel * stride) + delay;
-                Convert<TFormat, TSample>(
-                    source + (start * channels) + channel, channels, count, singleOrigin);
 
                 Vector256<double> lane = Vector256.Load(lanes + (channel * 4));
                 double top = tops[channel];
