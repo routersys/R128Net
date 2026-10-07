@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace R128Net;
 
@@ -141,10 +142,21 @@ internal unsafe partial struct Interpolator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double Widen(double accumulator, double peak)
+    private static Vector256<double> Raise(Vector256<double> peaks, Vector256<double> candidates)
     {
-        double magnitude = Math.Abs((double)Denormal.Flush((float)accumulator));
-        return magnitude > peak ? magnitude : peak;
+        if (Avx.IsSupported)
+        {
+            return Avx.Max(candidates, peaks);
+        }
+
+        return Vector256.ConditionalSelect(
+            Vector256.GreaterThan(candidates, peaks), candidates, peaks);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double Narrowed(double magnitude)
+    {
+        return Denormal.Flush((float)magnitude);
     }
 
     internal void AccumulatePeaksDense<TFormat, TSample>(
@@ -159,6 +171,14 @@ internal unsafe partial struct Interpolator
         double zeroCoefficient = Coefficients[0];
         int position = Position;
         int frame = 0;
+
+        double* lanes = stackalloc double[channels * 5];
+        for (int i = 0; i < channels * 5; ++i)
+        {
+            lanes[i] = double.NegativeInfinity;
+        }
+
+        double* zeros = lanes + (channels * 4);
 
         for (; frame + 2 <= frames; frame += 2)
         {
@@ -181,10 +201,20 @@ internal unsafe partial struct Interpolator
                 ring[second] = next;
                 ring[secondBase] = next;
 
-                double peak = peaks[channel];
+                double zero = zeros[channel];
+                double headZero = Math.Abs(ring[firstBase - zeroIndex] * zeroCoefficient);
+                if (headZero > zero)
+                {
+                    zero = headZero;
+                }
 
-                peak = Widen(ring[firstBase - zeroIndex] * zeroCoefficient, peak);
-                peak = Widen(ring[secondBase - zeroIndex] * zeroCoefficient, peak);
+                double nextZero = Math.Abs(ring[secondBase - zeroIndex] * zeroCoefficient);
+                if (nextZero > zero)
+                {
+                    zero = nextZero;
+                }
+
+                zeros[channel] = zero;
 
                 Vector256<double> headAccumulator = Vector256<double>.Zero;
                 Vector256<double> nextAccumulator = Vector256<double>.Zero;
@@ -227,14 +257,10 @@ internal unsafe partial struct Interpolator
                     packed += 4;
                 }
 
-                peak = Widen(headAccumulator[0], peak);
-                peak = Widen(headAccumulator[1], peak);
-                peak = Widen(headAccumulator[2], peak);
-                peak = Widen(nextAccumulator[0], peak);
-                peak = Widen(nextAccumulator[1], peak);
-                peak = Widen(nextAccumulator[2], peak);
-
-                peaks[channel] = peak;
+                Vector256<double> lane = Vector256.Load(lanes + (channel * 4));
+                lane = Raise(lane, Vector256.Abs(headAccumulator));
+                lane = Raise(lane, Vector256.Abs(nextAccumulator));
+                lane.Store(lanes + (channel * 4));
             }
 
             position = second + 1 == delay ? 0 : second + 1;
@@ -253,9 +279,14 @@ internal unsafe partial struct Interpolator
                 ring[position] = head;
                 ring[origin] = head;
 
-                double peak = peaks[channel];
+                double zero = zeros[channel];
+                double headZero = Math.Abs(ring[origin - zeroIndex] * zeroCoefficient);
+                if (headZero > zero)
+                {
+                    zero = headZero;
+                }
 
-                peak = Widen(ring[origin - zeroIndex] * zeroCoefficient, peak);
+                zeros[channel] = zero;
 
                 Vector256<double> accumulator = Vector256<double>.Zero;
 
@@ -270,14 +301,48 @@ internal unsafe partial struct Interpolator
                     packed += 4;
                 }
 
-                peak = Widen(accumulator[0], peak);
-                peak = Widen(accumulator[1], peak);
-                peak = Widen(accumulator[2], peak);
-
-                peaks[channel] = peak;
+                Vector256<double> lane = Vector256.Load(lanes + (channel * 4));
+                lane = Raise(lane, Vector256.Abs(accumulator));
+                lane.Store(lanes + (channel * 4));
             }
 
             position = position + 1 == delay ? 0 : position + 1;
+        }
+
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            double peak = peaks[channel];
+
+            double lanesTop = double.NegativeInfinity;
+            for (int k = 0; k < 4; ++k)
+            {
+                double candidate = lanes[(channel * 4) + k];
+                if (candidate > lanesTop)
+                {
+                    lanesTop = candidate;
+                }
+            }
+
+            if (lanesTop >= 0.0)
+            {
+                double narrowed = Narrowed(lanesTop);
+                if (narrowed > peak)
+                {
+                    peak = narrowed;
+                }
+            }
+
+            double zeroTop = zeros[channel];
+            if (zeroTop >= 0.0)
+            {
+                double narrowed = Narrowed(zeroTop);
+                if (narrowed > peak)
+                {
+                    peak = narrowed;
+                }
+            }
+
+            peaks[channel] = peak;
         }
 
         Position = position;
