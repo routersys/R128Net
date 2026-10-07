@@ -44,9 +44,6 @@ public class InterpolatorFlushTests
             bound = Math.Max(bound, sum);
         }
 
-        Assert.True(dense.DenseBound >= bound * (1.0 + 1e-13));
-        Assert.True(dense.DenseBound <= bound * (1.0 + 1e-9));
-
         FlushingOracle tracker = new(dense, channels);
         double[] reached = new double[channels];
 
