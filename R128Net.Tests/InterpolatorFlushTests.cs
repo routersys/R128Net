@@ -184,7 +184,13 @@ public class InterpolatorFlushTests
                 chunkSeed ^= chunkSeed << 13;
                 chunkSeed ^= chunkSeed >> 17;
                 chunkSeed ^= chunkSeed << 5;
-                int take = Math.Min(1 + (int)(chunkSeed % 9u), Frames - offset);
+                int span = (chunkSeed >> 28) switch
+                {
+                    < 8u => 1 + (int)(chunkSeed % 9u),
+                    < 12u => 1 + (int)(chunkSeed % 70u),
+                    _ => 1 + (int)(chunkSeed % 400u),
+                };
+                int take = Math.Min(span, Frames - offset);
 
                 Array.Clear(expected);
                 Array.Clear(densePeaks);
