@@ -25,43 +25,36 @@ internal static unsafe class KWeightingFilter
         bool plain = AllowsPlainArithmetic(weighting);
         int channel = 0;
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            for (; channel + 4 <= channels; channel += 4)
-            {
-                if (!IsGroupUsable(channelMap, channel, 4))
-                {
-                    break;
-                }
-
-                ProcessGroup256<TFormat, TSample>(
-                    source, destination, state, channels, frames, weighting, channel, plain);
-            }
-        }
-
-        if (Vector128.IsHardwareAccelerated)
-        {
-            for (; channel + 2 <= channels; channel += 2)
-            {
-                if (!IsGroupUsable(channelMap, channel, 2))
-                {
-                    break;
-                }
-
-                ProcessGroup128<TFormat, TSample>(
-                    source, destination, state, channels, frames, weighting, channel, plain);
-            }
-        }
-
-        for (; channel < channels; ++channel)
+        while (channel < channels)
         {
             if (channelMap[channel] == ChannelPosition.Unused)
             {
+                ++channel;
                 continue;
             }
 
-            ProcessChannel<TFormat, TSample>(
-                source, destination, state, channels, frames, weighting, channel, plain);
+            if (Vector256.IsHardwareAccelerated
+                && channel + 4 <= channels
+                && IsGroupUsable(channelMap, channel, 4))
+            {
+                ProcessGroup256<TFormat, TSample>(
+                    source, destination, state, channels, frames, weighting, channel, plain);
+                channel += 4;
+            }
+            else if (Vector128.IsHardwareAccelerated
+                && channel + 2 <= channels
+                && IsGroupUsable(channelMap, channel, 2))
+            {
+                ProcessGroup128<TFormat, TSample>(
+                    source, destination, state, channels, frames, weighting, channel, plain);
+                channel += 2;
+            }
+            else
+            {
+                ProcessChannel<TFormat, TSample>(
+                    source, destination, state, channels, frames, weighting, channel, plain);
+                ++channel;
+            }
         }
     }
 
