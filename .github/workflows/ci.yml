@@ -107,9 +107,20 @@ jobs:
         shell: cmd
         run: R128Net.Examples\bin\Release\net10.0\win-x64\publish\R128Net.Examples.exe
 
-  build-linux:
-    name: Linux でのビルド確認
-    runs-on: ubuntu-latest
+  cross-platform:
+    name: ${{ matrix.name }} でのビルドと参照データとの一致検証
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows ARM64
+            runner: windows-11-arm
+          - name: Linux x64
+            runner: ubuntu-latest
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
     defaults:
       run:
         shell: bash
@@ -123,5 +134,19 @@ jobs:
         with:
           dotnet-version: "10.x"
 
-      - name: ライブラリをビルド
-        run: dotnet build R128Net/R128Net.csproj -c Release
+      - name: ソリューションをビルド
+        run: dotnet build R128Net.slnx -c Release
+
+      - name: コミット済みの参照データでテストを実行
+        run: dotnet test R128Net.slnx -c Release --no-build
+
+      - name: AVX2 を無効にしてテストを実行
+        if: runner.arch == 'X64'
+        run: dotnet test R128Net.slnx -c Release --no-build
+        env:
+          DOTNET_EnableAVX2: "0"
+
+      - name: ハードウェア命令を無効にしてテストを実行
+        run: dotnet test R128Net.slnx -c Release --no-build
+        env:
+          DOTNET_EnableHWIntrinsic: "0"
