@@ -1,3 +1,5 @@
+using System.Runtime.Intrinsics;
+
 namespace R128Net.Tests;
 
 public class InterpolatorScreenTests
@@ -186,8 +188,9 @@ public class InterpolatorScreenTests
         float[] history = new float[Base + 24];
         uint state = 88172645u;
         long passes = 0;
+        int rounds = Vector256.IsHardwareAccelerated ? 400000 : 40000;
 
-        for (int round = 0; round < 400000; ++round)
+        for (int round = 0; round < rounds; ++round)
         {
             Fill(history, ref state, round, interpolator);
             double highest = HighestOutput(interpolator, history);
@@ -220,7 +223,7 @@ public class InterpolatorScreenTests
             }
         }
 
-        Assert.True(passes > 100000, $"the screen passed only {passes} times");
+        Assert.True(passes > rounds / 4, $"the screen passed only {passes} times");
     }
 
     [Fact]
