@@ -83,7 +83,7 @@ public class InterpolatorScreenTests
         int to = Base + 8;
         Array.Clear(history);
 
-        switch (round % 8)
+        switch (round % 9)
         {
             case 0:
                 for (int i = from; i < to; ++i)
@@ -167,11 +167,20 @@ public class InterpolatorScreenTests
 
                 break;
 
-            default:
+            case 7:
                 for (int i = from; i < to; ++i)
                 {
                     double exponent = -35.0 + (72.0 * (Unit(ref state) + 1.0) / 2.0);
                     history[i] = (float)(Math.Pow(10.0, exponent) * (Unit(ref state) < 0.0 ? -1.0 : 1.0));
+                }
+
+                break;
+
+            default:
+                if ((Next(ref state) & 1u) == 0u)
+                {
+                    history[from + (int)(Next(ref state) % (uint)(to - from))] =
+                        (Next(ref state) & 1u) == 0u ? float.NaN : -0.0f;
                 }
 
                 break;
@@ -353,6 +362,23 @@ public class InterpolatorScreenTests
                     }
                 }
             }
+        }
+    }
+
+    [Fact]
+    public unsafe void TheScreenPassesDigitalSilenceBeforeAnyPeakExists()
+    {
+        using StateMemory memory = new(Interpolator.GetRequiredBytes(Taps, Factor, 1));
+        Interpolator interpolator = Prepare(memory, 1);
+
+        float[] history = new float[Base + 24];
+        fixed (float* single = &history[Base])
+        {
+            Assert.True(interpolator.CannotExceedForTest(single, 0.0));
+            Assert.True(interpolator.CannotExceedForTest(single, 0.5));
+
+            history[Base + 3] = 1e-30f;
+            Assert.False(interpolator.CannotExceedForTest(single, 0.0));
         }
     }
 }
