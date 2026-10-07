@@ -8,6 +8,8 @@ namespace R128Net;
 internal unsafe partial struct Interpolator
 {
     public const double AlmostZero = 0.000001;
+    public const int BlockFrames = 64;
+    private const int DenseTail = BlockFrames + 4;
 
     public int Factor;
     public int Taps;
@@ -16,13 +18,17 @@ internal unsafe partial struct Interpolator
     public int* Counts;
     public int* Indices;
     public double* Coefficients;
-    public double* PackedCoefficients;
     public double* History;
     public int DensePhaseCount;
 
     public static int GetDelay(int taps, int factor)
     {
         return (taps + factor - 1) / factor;
+    }
+
+    private static int HistoryLength(int delay)
+    {
+        return Math.Max(2 * delay, delay + DenseTail);
     }
 
     public static void Layout<TAllocator>(ref TAllocator allocator, int taps, int factor,
@@ -33,8 +39,8 @@ internal unsafe partial struct Interpolator
         state.Counts = (int*)allocator.Allocate(factor, sizeof(int));
         state.Indices = (int*)allocator.Allocate(factor * delay, (nuint)sizeof(int));
         state.Coefficients = (double*)allocator.Allocate(factor * delay, sizeof(double));
-        state.PackedCoefficients = (double*)allocator.Allocate(4 * delay, sizeof(double));
-        state.History = (double*)allocator.Allocate(2 * channels * delay, sizeof(double));
+        state.History = (double*)allocator.Allocate(
+            channels * HistoryLength(delay), sizeof(double));
     }
 
     public void Initialize(int taps, int factor)
@@ -70,19 +76,6 @@ internal unsafe partial struct Interpolator
         }
 
         DensePhaseCount = MeasureDensePhases();
-
-        for (int i = 0; i < 4 * Delay; ++i)
-        {
-            PackedCoefficients[i] = 0.0;
-        }
-
-        for (int f = 1; f <= DensePhaseCount; ++f)
-        {
-            for (int t = 0; t < Counts[f]; ++t)
-            {
-                PackedCoefficients[(t * 4) + f - 1] = Coefficients[(f * Delay) + t];
-            }
-        }
     }
 
     private int MeasureDensePhases()
@@ -120,7 +113,7 @@ internal unsafe partial struct Interpolator
     public void Reset(int channels)
     {
         Position = 0;
-        for (int i = 0; i < 2 * channels * Delay; ++i)
+        for (int i = 0; i < channels * HistoryLength(Delay); ++i)
         {
             History[i] = 0.0;
         }
@@ -166,177 +159,108 @@ internal unsafe partial struct Interpolator
         where TSample : unmanaged
     {
         int delay = Delay;
-        int stride = 2 * delay;
+        int stride = HistoryLength(delay);
         int width = Counts[1];
         int zeroIndex = Indices[0];
-        double zeroCoefficient = Coefficients[0];
-        int position = Position;
-        int frame = 0;
+        Vector256<double> zeroCoefficient = Vector256.Create(Coefficients[0]);
+        double* first = Coefficients + delay;
+        double* second = Coefficients + (2 * delay);
+        double* third = Coefficients + (3 * delay);
 
-        double* lanes = stackalloc double[channels * 5];
-        for (int i = 0; i < channels * 5; ++i)
+        double* lanes = stackalloc double[channels * 4];
+        for (int i = 0; i < channels * 4; ++i)
         {
             lanes[i] = double.NegativeInfinity;
         }
 
-        double* zeros = lanes + (channels * 4);
-
-        for (; frame + 2 <= frames; frame += 2)
+        for (int start = 0; start < frames; start += BlockFrames)
         {
-            int first = position;
-            int second = position + 1 == delay ? 0 : position + 1;
-            int firstBase = first + delay;
-            int secondBase = second + delay;
+            int count = Math.Min(BlockFrames, frames - start);
 
             for (int channel = 0; channel < channels; ++channel)
             {
-                double* ring = History + (channel * stride);
+                double* work = History + (channel * stride);
 
-                double head = Denormal.Flush(
-                    (float)TFormat.ToUnit(source[(frame * channels) + channel]));
-                double next = Denormal.Flush(
-                    (float)TFormat.ToUnit(source[((frame + 1) * channels) + channel]));
-
-                ring[first] = head;
-                ring[firstBase] = head;
-                ring[second] = next;
-                ring[secondBase] = next;
-
-                double zero = zeros[channel];
-                double headZero = Math.Abs(ring[firstBase - zeroIndex] * zeroCoefficient);
-                if (headZero > zero)
+                for (int j = 0; j < count; ++j)
                 {
-                    zero = headZero;
+                    work[delay + j] = Denormal.Flush(
+                        (float)TFormat.ToUnit(source[((start + j) * channels) + channel]));
                 }
 
-                double nextZero = Math.Abs(ring[secondBase - zeroIndex] * zeroCoefficient);
-                if (nextZero > zero)
-                {
-                    zero = nextZero;
-                }
-
-                zeros[channel] = zero;
-
-                Vector256<double> headAccumulator = Vector256<double>.Zero;
-                Vector256<double> nextAccumulator = Vector256<double>.Zero;
-
-                double* headTap = ring + firstBase;
-                double* nextTap = ring + secondBase;
-                double* packed = PackedCoefficients;
-
-                int t = 0;
-                for (; t + 4 <= width; t += 4)
-                {
-                    Vector256<double> c0 = Vector256.Load(packed);
-                    Vector256<double> c1 = Vector256.Load(packed + 4);
-                    Vector256<double> c2 = Vector256.Load(packed + 8);
-                    Vector256<double> c3 = Vector256.Load(packed + 12);
-
-                    headAccumulator += Vector256.Create(headTap[0]) * c0;
-                    nextAccumulator += Vector256.Create(nextTap[0]) * c0;
-                    headAccumulator += Vector256.Create(headTap[-1]) * c1;
-                    nextAccumulator += Vector256.Create(nextTap[-1]) * c1;
-                    headAccumulator += Vector256.Create(headTap[-2]) * c2;
-                    nextAccumulator += Vector256.Create(nextTap[-2]) * c2;
-                    headAccumulator += Vector256.Create(headTap[-3]) * c3;
-                    nextAccumulator += Vector256.Create(nextTap[-3]) * c3;
-
-                    headTap -= 4;
-                    nextTap -= 4;
-                    packed += 16;
-                }
-
-                for (; t < width; ++t)
-                {
-                    Vector256<double> coefficients = Vector256.Load(packed);
-
-                    headAccumulator += Vector256.Create(*headTap) * coefficients;
-                    nextAccumulator += Vector256.Create(*nextTap) * coefficients;
-
-                    --headTap;
-                    --nextTap;
-                    packed += 4;
-                }
-
+                double* origin = work + delay;
                 Vector256<double> lane = Vector256.Load(lanes + (channel * 4));
-                lane = Raise(lane, Vector256.Abs(headAccumulator));
-                lane = Raise(lane, Vector256.Abs(nextAccumulator));
-                lane.Store(lanes + (channel * 4));
-            }
 
-            position = second + 1 == delay ? 0 : second + 1;
-        }
-
-        for (; frame < frames; ++frame)
-        {
-            int origin = position + delay;
-
-            for (int channel = 0; channel < channels; ++channel)
-            {
-                double* ring = History + (channel * stride);
-
-                double head = Denormal.Flush(
-                    (float)TFormat.ToUnit(source[(frame * channels) + channel]));
-                ring[position] = head;
-                ring[origin] = head;
-
-                double zero = zeros[channel];
-                double headZero = Math.Abs(ring[origin - zeroIndex] * zeroCoefficient);
-                if (headZero > zero)
+                for (int n = 0; n < count; n += 4)
                 {
-                    zero = headZero;
+                    double* tap = origin + n;
+
+                    Vector256<double> firstPhase = Vector256<double>.Zero;
+                    Vector256<double> secondPhase = Vector256<double>.Zero;
+                    Vector256<double> thirdPhase = Vector256<double>.Zero;
+
+                    for (int t = 0; t < width; ++t)
+                    {
+                        Vector256<double> delayed = Vector256.Load(tap - t);
+
+                        firstPhase += delayed * Vector256.Create(first[t]);
+                        secondPhase += delayed * Vector256.Create(second[t]);
+                        thirdPhase += delayed * Vector256.Create(third[t]);
+                    }
+
+                    Vector256<double> zeroPhase = Vector256.Load(tap - zeroIndex) * zeroCoefficient;
+
+                    int remaining = count - n;
+                    if (remaining >= 4)
+                    {
+                        lane = Raise(lane, Vector256.Abs(firstPhase));
+                        lane = Raise(lane, Vector256.Abs(secondPhase));
+                        lane = Raise(lane, Vector256.Abs(thirdPhase));
+                        lane = Raise(lane, Vector256.Abs(zeroPhase));
+                    }
+                    else
+                    {
+                        Vector256<double> live = Vector256.LessThan(
+                            Vector256.Create(0L, 1L, 2L, 3L),
+                            Vector256.Create((long)remaining)).AsDouble();
+                        Vector256<double> none = Vector256.Create(double.NegativeInfinity);
+
+                        lane = Raise(lane, Vector256.ConditionalSelect(
+                            live, Vector256.Abs(firstPhase), none));
+                        lane = Raise(lane, Vector256.ConditionalSelect(
+                            live, Vector256.Abs(secondPhase), none));
+                        lane = Raise(lane, Vector256.ConditionalSelect(
+                            live, Vector256.Abs(thirdPhase), none));
+                        lane = Raise(lane, Vector256.ConditionalSelect(
+                            live, Vector256.Abs(zeroPhase), none));
+                    }
                 }
 
-                zeros[channel] = zero;
-
-                Vector256<double> accumulator = Vector256<double>.Zero;
-
-                double* tap = ring + origin;
-                double* packed = PackedCoefficients;
-
-                for (int t = 0; t < width; ++t)
-                {
-                    accumulator += Vector256.Create(*tap) * Vector256.Load(packed);
-
-                    --tap;
-                    packed += 4;
-                }
-
-                Vector256<double> lane = Vector256.Load(lanes + (channel * 4));
-                lane = Raise(lane, Vector256.Abs(accumulator));
                 lane.Store(lanes + (channel * 4));
-            }
 
-            position = position + 1 == delay ? 0 : position + 1;
+                for (int j = 0; j < delay; ++j)
+                {
+                    work[j] = work[count + j];
+                }
+            }
         }
 
         for (int channel = 0; channel < channels; ++channel)
         {
             double peak = peaks[channel];
 
-            double lanesTop = double.NegativeInfinity;
+            double top = double.NegativeInfinity;
             for (int k = 0; k < 4; ++k)
             {
                 double candidate = lanes[(channel * 4) + k];
-                if (candidate > lanesTop)
+                if (candidate > top)
                 {
-                    lanesTop = candidate;
+                    top = candidate;
                 }
             }
 
-            if (lanesTop >= 0.0)
+            if (top >= 0.0)
             {
-                double narrowed = Narrowed(lanesTop);
-                if (narrowed > peak)
-                {
-                    peak = narrowed;
-                }
-            }
-
-            double zeroTop = zeros[channel];
-            if (zeroTop >= 0.0)
-            {
-                double narrowed = Narrowed(zeroTop);
+                double narrowed = Narrowed(top);
                 if (narrowed > peak)
                 {
                     peak = narrowed;
@@ -346,7 +270,7 @@ internal unsafe partial struct Interpolator
             peaks[channel] = peak;
         }
 
-        Position = position;
+        Position = (Position + frames) % delay;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -356,7 +280,7 @@ internal unsafe partial struct Interpolator
         where TSample : unmanaged
     {
         int delay = Delay;
-        int stride = 2 * delay;
+        int stride = HistoryLength(delay);
         int factor = Factor;
         int position = Position;
 
