@@ -97,7 +97,20 @@ public sealed unsafe class LoudnessMeter : IDisposable
         _samplesIn100ms = (nuint)((sampleRate + 5) / 10);
 
         _window = ClampWindow(options.MaxWindowMilliseconds, modes);
+
+        if (!_upstreamOverflow && (ulong)_window > ulong.MaxValue / (ulong)sampleRate)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaxWindowMilliseconds,
+                "The requested window does not fit a frame count.");
+        }
+
         _audioDataFrames = ComputeAudioDataFrames(_window);
+
+        if (_audioDataFrames < _samplesIn100ms * 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaxWindowMilliseconds,
+                "The requested window wraps to fewer frames than the momentary window needs.");
+        }
 
         nuint samples = checked(_audioDataFrames * (nuint)channels);
         if (samples > int.MaxValue)
