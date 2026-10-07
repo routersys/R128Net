@@ -1,0 +1,90 @@
+name: Proposal
+description: Propose a new capability, a new public API, or a change to one that exists.
+title: "[Proposal] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        R128Net ports libebur128 and verifies its output against the original, and its measurement
+        performs no managed allocation. A proposal is judged against both, so the questions below
+        about results and allocation are the ones that decide the outcome.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - New public API
+        - Change to existing public API
+        - Change to numerical results
+        - Support for a new platform or target framework
+        - Performance
+        - Tooling, packaging or documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: |
+        What you cannot do today, described from the caller's side. Write the situation, not the
+        solution. A proposal that only describes an API rarely survives review.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do instead today
+      description: |
+        The workaround you currently use and what it costs you. If there is no workaround, say so,
+        and say what you do instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: surface
+    attributes:
+      label: Proposed API
+      description: |
+        Signatures only, in C#. Include every public member you intend to add. A proposal is easier to
+        accept when the surface is small and complete.
+      render: csharp
+
+  - type: textarea
+    id: results
+    attributes:
+      label: Effect on results
+      description: |
+        Whether any output would differ from the original libebur128, and if so, which quantity and by how much.
+        Write "none" if nothing differs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: allocation
+    attributes:
+      label: Effect on allocation
+      description: |
+        Whether any call would allocate managed memory, and how much larger the native state block would
+        become. Write "none" if nothing changes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including doing nothing, and why that is not enough.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: I checked that the current release does not already provide this.
+          required: true
