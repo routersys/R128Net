@@ -1,4 +1,53 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="CODE_OF_CONDUCT.ja.md" />
+    <File Path="CODE_OF_CONDUCT.md" />
+    <File Path="CONTRIBUTING.ja.md" />
+    <File Path="CONTRIBUTING.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="LICENSE.txt" />
+    <File Path="publish-aot.bat" />
+    <File Path="README.ja.md" />
+    <File Path="README.md" />
+    <File Path="SECURITY.ja.md" />
+    <File Path="SECURITY.md" />
+  </Folder>
+  <Folder Name="/.github/">
+    <File Path=".github/FUNDING.yml" />
+    <File Path=".github/pull_request_template.md" />
+  </Folder>
+  <Folder Name="/.github/ISSUE_TEMPLATE/">
+    <File Path=".github/ISSUE_TEMPLATE/bug_report.ja.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/bug_report.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/config.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/documentation.ja.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/documentation.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/feature_request.ja.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/feature_request.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/question.ja.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/question.yml" />
+  </Folder>
+  <Folder Name="/.github/LICENSE/">
+    <File Path=".github/LICENSE/libebur128.txt" />
+  </Folder>
+  <Folder Name="/.github/scripts/">
+    <File Path=".github/scripts/benchmark.py" />
+    <File Path=".github/scripts/new-icon.ps1" />
+  </Folder>
+  <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/benchmark.yml" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/manual-release.yml" />
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
+  <Folder Name="/reference/">
+    <File Path="reference/build.bat" />
+    <File Path="reference/dump.h" />
+    <File Path="reference/main.c" />
+  </Folder>
   <Project Path="R128Net/R128Net.csproj" />
   <Project Path="R128Net.Examples/R128Net.Examples.csproj" />
   <Project Path="R128Net.SourceGenerator/R128Net.SourceGenerator.csproj" />
