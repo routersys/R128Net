@@ -143,8 +143,7 @@ internal unsafe partial struct Interpolator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double Widen(double accumulator, double peak)
     {
-        double value = Denormal.Flush((float)accumulator);
-        double magnitude = value > -value ? value : -value;
+        double magnitude = Math.Abs((double)Denormal.Flush((float)accumulator));
         return magnitude > peak ? magnitude : peak;
     }
 
@@ -291,8 +290,7 @@ internal unsafe partial struct Interpolator
                         accumulator += line[i * channels] * coefficients[t];
                     }
 
-                    double value = Denormal.Flush((float)accumulator);
-                    double magnitude = value > -value ? value : -value;
+                    double magnitude = Math.Abs((double)Denormal.Flush((float)accumulator));
                     if (magnitude > peak)
                     {
                         peak = magnitude;
