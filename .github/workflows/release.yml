@@ -198,9 +198,6 @@ jobs:
     name: GitHub Release の作成
     runs-on: ubuntu-latest
     needs: [validate, pack, publish-nuget]
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - name: ソースコードを取得
@@ -214,45 +211,254 @@ jobs:
           name: nuget-packages
           path: ./artifacts
 
-      - name: 直前のリリースタグを取得
-        id: prev_tag
-        run: |
-          PREV=$(git tag --sort=-version:refname \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | sed -n '2p' || true)
-          echo "tag=${PREV}" >> "$GITHUB_OUTPUT"
-
-      - name: コミット履歴からリリースノートを生成
+      - name: 変更履歴の作成
         id: changelog
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          PACKAGE: artifacts/R128Net.${{ needs.validate.outputs.version }}.nupkg
         run: |
-          PREV="${{ steps.prev_tag.outputs.tag }}"
-          CURRENT="${{ github.ref_name }}"
-          if [ -n "${PREV}" ]; then
-            LOG=$(git log "${PREV}..${CURRENT}" --pretty=format:"- %s (%h)" --no-merges)
-          else
-            LOG=$(git log -n 30 --pretty=format:"- %s (%h)" --no-merges)
-          fi
-          {
-            echo "notes<<NOTES_EOF"
-            echo "### 変更内容"
-            echo "${LOG:-変更履歴を取得できませんでした。}"
-            echo ""
-            echo "### インストール"
-            echo '```sh'
-            echo "dotnet add package R128Net --version ${{ needs.validate.outputs.version }}"
-            echo '```'
-            echo ""
-            echo "### NuGet"
-            echo "https://www.nuget.org/packages/R128Net/${{ needs.validate.outputs.version }}"
-            echo "NOTES_EOF"
-          } >> "$GITHUB_OUTPUT"
+          $tag        = $env:TAG
+          $repository = $env:REPOSITORY
+          $server     = $env:SERVER_URL
+          $code       = [char]0x60
+          $fence      = [string]::new($code, 3)
+          $unit       = [char]0x1f
+          $record     = [char]0x1e
+
+          $previous = ""
+          $candidates = @(git tag --list "v*" --merged $tag --sort=-creatordate | Where-Object { $_ -ne $tag })
+          if ($candidates.Count -gt 0) {
+            $previous = $candidates[0]
+          }
+          Write-Host "直前のタグ: $previous"
+
+          $range = if ($previous) { "$previous..$tag" } else { $tag }
+          $log = (@(git log "--format=%H%x1f%s%x1f%an%x1f%ad%x1f%b%x1e" --date=short $range) -join "`n") -split $record
+
+          $commits = @()
+          foreach ($entry in $log) {
+            if (-not $entry.Trim()) { continue }
+            $fields = $entry.TrimStart("`n") -split $unit
+            if ($fields.Count -lt 5) { continue }
+            $commits += [pscustomobject]@{
+              Sha     = $fields[0]
+              Subject = $fields[1]
+              Name    = $fields[2]
+              Date    = $fields[3]
+              Body    = $fields[4]
+              Login   = ""
+              Avatar  = ""
+            }
+          }
+          Write-Host "コミット数: $($commits.Count)"
+
+          $categories = [ordered]@{
+            A = @{ Title = "追加"; Symbol = "+"; Items = [System.Collections.Generic.List[pscustomobject]]::new() }
+            M = @{ Title = "変更"; Symbol = "~"; Items = [System.Collections.Generic.List[pscustomobject]]::new() }
+            D = @{ Title = "削除"; Symbol = "-"; Items = [System.Collections.Generic.List[pscustomobject]]::new() }
+            F = @{ Title = "修正"; Symbol = "!"; Items = [System.Collections.Generic.List[pscustomobject]]::new() }
+          }
+          foreach ($commit in $commits) {
+            if (-not $commit.Body) { continue }
+            foreach ($bodyLine in ($commit.Body -split "`n")) {
+              $trimmed = $bodyLine.Trim()
+              if ($trimmed -notmatch '^・(.+)-([AMDF])$') { continue }
+              $categories[$Matches[2]].Items.Add([pscustomobject]@{ Text = $Matches[1]; Sha = $commit.Sha })
+            }
+          }
+
+          $pending = [System.Collections.Generic.HashSet[string]]::new()
+          foreach ($commit in $commits) {
+            [void]$pending.Add($commit.Sha)
+          }
+
+          $accounts = @{}
+          $page = 1
+          while ($pending.Count -gt 0 -and $page -le 20) {
+            $rows = @()
+            try {
+              $rows = @(gh api "repos/$repository/commits?sha=$tag&per_page=100&page=$page" --jq '.[] | [.sha, (.author.login // ""), (.author.avatar_url // "")] | @tsv')
+            }
+            catch {
+              Write-Host "コミットの作者を取得できませんでした: $($_.Exception.Message)"
+              break
+            }
+            if ($LASTEXITCODE -ne 0 -or $rows.Count -eq 0) { break }
+
+            foreach ($row in $rows) {
+              $fields = $row -split "`t"
+              if ($fields.Count -lt 3) { continue }
+              if ($pending.Remove($fields[0])) {
+                $accounts[$fields[0]] = @{ Login = $fields[1]; Avatar = $fields[2] }
+              }
+            }
+
+            if ($rows.Count -lt 100) { break }
+            $page++
+          }
+
+          foreach ($commit in $commits) {
+            if ($accounts.ContainsKey($commit.Sha)) {
+              $commit.Login  = $accounts[$commit.Sha].Login
+              $commit.Avatar = $accounts[$commit.Sha].Avatar
+            }
+          }
+
+          $emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+          $base = if ($previous) { $previous } else { $emptyTree }
+          $shortstat = (@(git diff --shortstat $base $tag) -join " ")
+          $changedFiles = 0
+          $insertions   = 0
+          $deletions    = 0
+          if ($shortstat -match "(\d+) file")      { $changedFiles = [int]$Matches[1] }
+          if ($shortstat -match "(\d+) insertion") { $insertions   = [int]$Matches[1] }
+          if ($shortstat -match "(\d+) deletion")  { $deletions    = [int]$Matches[1] }
+          $diffStat = @(git diff --stat $base $tag)
+          $tagDate = (git log -1 "--format=%ad" --date=short $tag)
+
+          $contributors = @($commits |
+            Group-Object -Property { if ($_.Login) { $_.Login } else { $_.Name } } |
+            Sort-Object -Property Count -Descending)
+
+          function Get-Icon($avatar, $login, $size) {
+            if (-not $avatar) { return "" }
+            $sized = if ($avatar.Contains("?")) { "$avatar&s=$($size * 2)" } else { "$avatar" + "?s=$($size * 2)" }
+            return "<img src=""$sized"" width=""$size"" height=""$size"" alt=""$login""> "
+          }
+
+          $package = Get-Item $env:PACKAGE
+          $size = [math]::Round($package.Length / 1MB, 2)
+
+          $body = [System.Collections.Generic.List[string]]::new()
+          $body.Add("## 概要")
+          $body.Add("")
+          $body.Add("| 項目 | 内容 |")
+          $body.Add("|---|---|")
+          $body.Add("| タグ | [$tag]($server/$repository/tree/$tag) |")
+          $body.Add("| 公開日 | $tagDate |")
+          if ($previous) {
+            $body.Add("| 直前のリリース | [$previous]($server/$repository/releases/tag/$previous) |")
+          }
+          $body.Add("| コミット数 | $($commits.Count) |")
+          $body.Add("| 貢献者 | $($contributors.Count) 名 |")
+          $body.Add("| 変更されたファイル | $changedFiles |")
+          $body.Add("| 追加された行 | $insertions |")
+          $body.Add("| 削除された行 | $deletions |")
+
+          $hasHighlights = ($categories.Values | ForEach-Object { $_.Items.Count } | Measure-Object -Sum).Sum -gt 0
+          if ($hasHighlights) {
+            $body.Add("")
+            $body.Add("## 主な変更")
+            foreach ($key in $categories.Keys) {
+              $category = $categories[$key]
+              if ($category.Items.Count -eq 0) { continue }
+              $body.Add("")
+              $body.Add("### [$($category.Symbol)] $($category.Title)")
+              $body.Add("")
+              foreach ($item in $category.Items) {
+                $short = $item.Sha.Substring(0, 7)
+                $body.Add("- $($item.Text) ([$code$short$code]($server/$repository/commit/$($item.Sha)))")
+              }
+            }
+          }
+
+          $body.Add("")
+          $body.Add("## ダウンロード")
+          $body.Add("")
+          $body.Add("| ファイル | サイズ |")
+          $body.Add("|---|---|")
+          $body.Add("| $($package.Name) | $size MB |")
+
+          $body.Add("")
+          $body.Add("## 貢献者")
+          $body.Add("")
+          $body.Add("| 貢献者 | コミット数 |")
+          $body.Add("|---|---|")
+          foreach ($contributor in $contributors) {
+            $first = $contributor.Group[0]
+            if ($first.Login) {
+              $name = (Get-Icon $first.Avatar $first.Login 40) + "[@$($first.Login)]($server/$($first.Login))"
+            }
+            else {
+              $name = $first.Name
+            }
+            $body.Add("| $name | $($contributor.Count) |")
+          }
+
+          $body.Add("")
+          $body.Add("## 変更履歴")
+          $body.Add("")
+          $body.Add("| コミット | 内容 | 貢献者 | 日付 |")
+          $body.Add("|---|---|---|---|")
+          $maximumCommits = 300
+          $listed = 0
+          foreach ($commit in $commits) {
+            if ($listed -ge $maximumCommits) { break }
+            $short = $commit.Sha.Substring(0, 7)
+            $subject = $commit.Subject -replace '\|', '\|'
+            if ($commit.Login) {
+              $author = (Get-Icon $commit.Avatar $commit.Login 20) + "[@$($commit.Login)]($server/$($commit.Login))"
+            }
+            else {
+              $author = $commit.Name
+            }
+            $body.Add("| [$code$short$code]($server/$repository/commit/$($commit.Sha)) | $subject | $author | $($commit.Date) |")
+            $listed++
+          }
+          if ($commits.Count -gt $maximumCommits) {
+            $body.Add("")
+            $body.Add("残り $($commits.Count - $maximumCommits) 件のコミットは省略しました。")
+          }
+
+          if ($diffStat.Count -gt 0) {
+            $body.Add("")
+            $body.Add("## 変更されたファイル")
+            $body.Add("")
+            $body.Add("<details>")
+            $body.Add("<summary>差分の統計</summary>")
+            $body.Add("")
+            $body.Add($fence)
+            $maximumStatLines = 200
+            $shown = 0
+            foreach ($line in $diffStat) {
+              if ($shown -ge $maximumStatLines) { break }
+              $body.Add($line)
+              $shown++
+            }
+            if ($diffStat.Count -gt $maximumStatLines) {
+              $body.Add("... 残り $($diffStat.Count - $maximumStatLines) 行は省略しました。")
+            }
+            $body.Add($fence)
+            $body.Add("")
+            $body.Add("</details>")
+          }
+
+          if ($previous) {
+            $body.Add("")
+            $body.Add("## 全ての変更")
+            $body.Add("")
+            $body.Add("$server/$repository/compare/$previous...$tag")
+          }
+
+          $path = "release-body.md"
+          Set-Content -Path $path -Value ($body -join "`n") -Encoding utf8NoBOM
+          if (-not (Test-Path $path)) {
+            throw "変更履歴を作成できませんでした。"
+          }
+          Write-Host "変更履歴の行数: $($body.Count)"
+          $global:LASTEXITCODE = 0
+
 
       - name: GitHub Release を作成してパッケージを添付
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.notes }}
+          body_path: release-body.md
           prerelease: ${{ needs.validate.outputs.is_prerelease }}
           files: |
             artifacts/R128Net.*.nupkg
