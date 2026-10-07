@@ -76,7 +76,7 @@ dotnet add package R128Net
 1. Create a `LoudnessMeter` with the channel count, the sample rate and the modes you need. Request the lowest set of modes that suits your needs, because every mode costs processing time.
 2. Feed interleaved audio through `AddFrames`. Buffers of any length are accepted as long as they hold a whole number of frames.
 3. Read the results as properties. They may be read at any point during the measurement.
-4. To run the test suite, generate the reference data first by executing `reference/build.bat`, which clones libebur128, builds it with MSVC and writes the dumps to `reference/data`.
+4. The reference data that the test suite compares against is committed under `reference/data`, so the suite runs right after a clone. To regenerate it, execute `reference/build.bat`, which clones libebur128, builds it with MSVC and overwrites the dumps.
 5. To produce a Native AOT binary of the sample application, run `publish-aot.bat`.
 
 ---
