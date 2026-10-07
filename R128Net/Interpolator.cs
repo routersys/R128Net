@@ -190,7 +190,7 @@ internal unsafe partial struct Interpolator
         where TFormat : struct, ISampleFormat<TSample>
         where TSample : unmanaged
     {
-        if (DensePhaseCount == 3 && Vector256.IsHardwareAccelerated)
+        if (DensePhaseCount == 3 && Vector128.IsHardwareAccelerated)
         {
             AccumulatePeaksDense<TFormat, TSample>(source, peaks, channels, frames);
         }
