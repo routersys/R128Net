@@ -22,6 +22,7 @@ internal static unsafe class SamplePeak
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void AccumulateScalar<TFormat, TSample>(
         TSample* source, double* peaks, int channels, int frames)
         where TFormat : struct, ISampleFormat<TSample>
@@ -60,6 +61,7 @@ internal static unsafe class SamplePeak
             TFormat.ToRaw(source[2]), TFormat.ToRaw(source[3]));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void AccumulateVectorised<TFormat, TSample>(
         TSample* source, double* peaks, int channels, int frames)
         where TFormat : struct, ISampleFormat<TSample>

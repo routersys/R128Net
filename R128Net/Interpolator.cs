@@ -159,6 +159,7 @@ internal unsafe partial struct Interpolator
         return Denormal.Flush((float)magnitude);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal void AccumulatePeaksDense<TFormat, TSample>(
         TSample* source, double* peaks, int channels, int frames)
         where TFormat : struct, ISampleFormat<TSample>
@@ -348,6 +349,7 @@ internal unsafe partial struct Interpolator
         Position = position;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal void AccumulatePeaksGeneral<TFormat, TSample>(
         TSample* source, double* peaks, int channels, int frames)
         where TFormat : struct, ISampleFormat<TSample>

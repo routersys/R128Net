@@ -146,6 +146,7 @@ internal static unsafe class KWeightingFilter
             & Vector256.LessThan(magnitude, Vector256.Create(SettledBits));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ProcessChannel<TFormat, TSample>(
         TSample* source,
         double* destination,
@@ -270,6 +271,7 @@ internal static unsafe class KWeightingFilter
             TFormat.ToUnit(source[2]), TFormat.ToUnit(source[3]));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ProcessGroup128<TFormat, TSample>(
         TSample* source,
         double* destination,
@@ -369,6 +371,7 @@ internal static unsafe class KWeightingFilter
         s4.Store(state + (3 * channels) + channel);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ProcessGroup256<TFormat, TSample>(
         TSample* source,
         double* destination,

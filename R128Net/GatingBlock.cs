@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 
 namespace R128Net;
@@ -95,6 +96,7 @@ internal static unsafe class GatingBlock
         return sum / (double)framesPerBlock;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static Vector256<double> Accumulate256(
         double* data, nuint start, nuint end, nuint stride, Vector256<double> lanes)
     {
@@ -110,6 +112,7 @@ internal static unsafe class GatingBlock
         return lanes;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static Vector128<double> Accumulate128(
         double* data, nuint start, nuint end, nuint stride, Vector128<double> lanes)
     {
@@ -125,6 +128,7 @@ internal static unsafe class GatingBlock
         return lanes;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static double AccumulateScalar(
         double* data, nuint start, nuint end, nuint stride, double sum)
     {
