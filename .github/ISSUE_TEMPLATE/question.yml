@@ -1,0 +1,53 @@
+name: Question
+description: Ask how something is meant to be used, or whether an observed behavior is intended.
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you already believe the library is wrong, open a bug report instead. Use this when you are
+        not yet sure whether the behavior you see is a defect or the intended contract.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Ask it directly, in one or two sentences, before giving the background.
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you are trying to do
+      description: |
+        The end you are working towards, not only the step you are stuck on. The answer often turns
+        out to be a different approach rather than a fix to the current one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: The code you have now, and what it does instead of what you wanted.
+      render: csharp
+
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: R128Net 1.1.0
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read the README section covering this area.
+          required: true
+        - label: I searched the existing issues for the same question.
+          required: true
