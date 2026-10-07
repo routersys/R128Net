@@ -13,7 +13,7 @@ internal unsafe struct BumpAllocator : IStateAllocator
         _used = 0;
     }
 
-    public nuint Used => _used;
+    public readonly nuint Used => _used;
 
     public void* Allocate(int count, nuint elementSize)
     {

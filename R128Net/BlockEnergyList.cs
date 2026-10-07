@@ -13,11 +13,11 @@ internal unsafe struct BlockEnergyList
     private nuint _maximum;
     private bool _canGrow;
 
-    public nuint Count => _count;
+    public readonly nuint Count => _count;
 
-    public nuint Capacity => _capacity;
+    public readonly nuint Capacity => _capacity;
 
-    public nuint Maximum => _maximum;
+    public readonly nuint Maximum => _maximum;
 
     public void Initialize(nuint maximum, bool preallocate)
     {
