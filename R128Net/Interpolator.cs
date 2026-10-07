@@ -183,10 +183,8 @@ internal unsafe partial struct Interpolator
 
                 double peak = peaks[channel];
 
-                peak = Widen(Denormal.Flush(Denormal.Flush(
-                    line[(firstBase - zeroIndex) * channels] * zeroCoefficient)), peak);
-                peak = Widen(Denormal.Flush(Denormal.Flush(
-                    line[(secondBase - zeroIndex) * channels] * zeroCoefficient)), peak);
+                peak = Widen(line[(firstBase - zeroIndex) * channels] * zeroCoefficient, peak);
+                peak = Widen(line[(secondBase - zeroIndex) * channels] * zeroCoefficient, peak);
 
                 Vector256<double> headAccumulator = Vector256<double>.Zero;
                 Vector256<double> nextAccumulator = Vector256<double>.Zero;
@@ -196,13 +194,11 @@ internal unsafe partial struct Interpolator
                     Vector256<double> coefficients =
                         Vector256.Load(PackedCoefficients + (t * 4));
 
-                    headAccumulator = Denormal.Flush(headAccumulator + Denormal.Flush(
-                        Vector256.Create(line[(firstBase - t) * channels])
-                        * coefficients));
+                    headAccumulator += Vector256.Create(line[(firstBase - t) * channels])
+                        * coefficients;
 
-                    nextAccumulator = Denormal.Flush(nextAccumulator + Denormal.Flush(
-                        Vector256.Create(line[(secondBase - t) * channels])
-                        * coefficients));
+                    nextAccumulator += Vector256.Create(line[(secondBase - t) * channels])
+                        * coefficients;
                 }
 
                 peak = Widen(headAccumulator[0], peak);
@@ -233,16 +229,14 @@ internal unsafe partial struct Interpolator
 
                 double peak = peaks[channel];
 
-                peak = Widen(Denormal.Flush(Denormal.Flush(
-                    line[(origin - zeroIndex) * channels] * zeroCoefficient)), peak);
+                peak = Widen(line[(origin - zeroIndex) * channels] * zeroCoefficient, peak);
 
                 Vector256<double> accumulator = Vector256<double>.Zero;
 
                 for (int t = 0; t < width; ++t)
                 {
-                    accumulator = Denormal.Flush(accumulator + Denormal.Flush(
-                        Vector256.Create(line[(origin - t) * channels])
-                        * Vector256.Load(PackedCoefficients + (t * 4))));
+                    accumulator += Vector256.Create(line[(origin - t) * channels])
+                        * Vector256.Load(PackedCoefficients + (t * 4));
                 }
 
                 peak = Widen(accumulator[0], peak);
@@ -294,8 +288,7 @@ internal unsafe partial struct Interpolator
                             i += delay;
                         }
 
-                        accumulator = Denormal.Flush(accumulator
-                            + Denormal.Flush(line[i * channels] * coefficients[t]));
+                        accumulator += line[i * channels] * coefficients[t];
                     }
 
                     double value = Denormal.Flush((float)accumulator);
