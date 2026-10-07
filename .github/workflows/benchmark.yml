@@ -27,6 +27,8 @@ jobs:
   benchmark:
     name: 原典CとNativeAOTとJITを同一環境で比較
     runs-on: windows-latest
+    env:
+      TARGET_BRANCH: ${{ github.event_name == 'release' && 'main' || github.ref_name }}
     defaults:
       run:
         shell: bash
@@ -35,7 +37,7 @@ jobs:
       - name: ソースコードを取得
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
 
       - name: .NET SDK をセットアップ
@@ -97,7 +99,7 @@ jobs:
             README.ja.md
           retention-days: 90
 
-      - name: 計測結果を main へコミット
+      - name: 計測結果を対象のブランチへコミット
         if: ${{ github.event_name == 'release' || inputs.commit_result }}
         run: |
           git config user.name "github-actions[bot]"
@@ -108,4 +110,4 @@ jobs:
           fi
           git add README.md README.ja.md
           git commit -m "CIの計測結果で性能の節を更新"
-          git push origin HEAD:main
+          git push origin "HEAD:${TARGET_BRANCH}"
