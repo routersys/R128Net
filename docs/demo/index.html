@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>R128Net demo: measure loudness in your browser</title>
+<meta name="description" content="Run R128Net in your browser as WebAssembly: measure the loudness of a test signal or your own audio, follow momentary and short-term loudness over time, find the gain that reaches a target and time each measurement mode. Nothing is uploaded.">
+<link rel="canonical" href="https://lib.routersys.com/R128Net/demo/">
+<link rel="alternate" hreflang="en" href="https://lib.routersys.com/R128Net/demo/">
+<link rel="alternate" hreflang="ja" href="https://lib.routersys.com/R128Net/ja/demo/">
+<link rel="alternate" hreflang="x-default" href="https://lib.routersys.com/R128Net/demo/">
+<link rel="icon" href="../icon.png" type="image/png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="R128Net">
+<meta property="og:title" content="R128Net demo: measure loudness in your browser">
+<meta property="og:description" content="Run R128Net in your browser as WebAssembly: measure the loudness of a test signal or your own audio, follow momentary and short-term loudness over time, find the gain that reaches a target and time each measurement mode. Nothing is uploaded.">
+<meta property="og:url" content="https://lib.routersys.com/R128Net/demo/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<style>body{max-width:44em;margin:1em auto;padding:0 1em;line-height:1.5}audio,svg{max-width:100%}table{border-collapse:collapse}th,td{border:1px solid;padding:.1em .6em}th{text-align:left}td{text-align:right}</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "R128Net demo: measure loudness in your browser", "description": "Run R128Net in your browser as WebAssembly: measure the loudness of a test signal or your own audio, follow momentary and short-term loudness over time, find the gain that reaches a target and time each measurement mode. Nothing is uploaded.", "url": "https://lib.routersys.com/R128Net/demo/", "inLanguage": "en", "isPartOf": {"@type": "WebSite", "name": "R128Net", "url": "https://lib.routersys.com/R128Net/"}}</script>
+</head>
+<body>
+<header>
+<h1>R128Net demo</h1>
+<nav><a href="../">Home</a> | <a href="https://github.com/routersys/R128Net">GitHub</a> | <a href="../ja/demo/" hreflang="ja" lang="ja">日本語</a></nav>
+</header>
+<hr>
+<main>
+<p>This page runs R128Net in your browser as WebAssembly. Nothing is uploaded. It measures the audio chosen in section 1 the way a broadcast loudness meter does, then finds the gain that brings it to a target loudness and measures the result again.</p>
+<p id="status" role="status"></p>
+<h2>1. Audio</h2>
+<p><label>Source: <select id="source" disabled>
+<option value="0" selected>Test programme: four sections of different loudness (40 s)</option>
+<option value="1">1 kHz sine at -23 dBFS (20 s)</option>
+<option value="2">12 kHz sine with peaks between the samples (10 s)</option>
+<option value="3">Voice: one sentence (2 s)</option>
+</select></label></p>
+<audio id="original" controls hidden></audio>
+<p id="sampleNote" data-src="LJ016-0230.wav" hidden>Voice: Linda Johnson, recorded for LibriVox, from the <a href="https://keithito.com/LJ-Speech-Dataset/">LJ Speech Dataset</a> by Keith Ito. The dataset is in the public domain.</p>
+<p><label>Or try your own audio: <input id="file" type="file" accept="audio/*" disabled></label></p>
+<p>Your file stays in your browser. A WAV file is read as it is. Any other format is decoded by the browser, to 48 kHz where it allows that. Only the first 120 seconds are used.</p>
+<p id="audioInfo"></p>
+<ul>
+<li>The test programme is generated in your browser: a quiet chord, a loud one with a beat, almost silence, and a chord of medium loudness. The almost silent part is below the absolute gate and the quiet chord is below the relative gate, so neither counts towards the integrated loudness.</li>
+<li>The 1 kHz sine measures -23.0 LUFS. Its peak is -23 dBFS in both channels.</li>
+<li>The 12 kHz sine is sampled at 48 kHz so that no sample lands on a crest. The largest sample is 3 dB below the real peak of the waveform, which lies between two samples. Sample peak shows the first and true peak the second.</li>
+</ul>
+<h2>2. Loudness</h2>
+<table>
+<thead><tr><th>Measurement</th><th>Value</th></tr></thead>
+<tbody>
+<tr><th scope="row">Integrated loudness</th><td id="integrated"></td></tr>
+<tr><th scope="row">Loudness range</th><td id="range"></td></tr>
+<tr><th scope="row">Relative gate</th><td id="gate"></td></tr>
+<tr><th scope="row">Highest momentary loudness</th><td id="momentaryMax"></td></tr>
+<tr><th scope="row">Highest short-term loudness</th><td id="shortMax"></td></tr>
+<tr><th scope="row">Sample peak, each channel</th><td id="samplePeak"></td></tr>
+<tr><th scope="row">True peak, each channel</th><td id="truePeak"></td></tr>
+</tbody>
+</table>
+<p id="measureNote"></p>
+<div id="timeline"></div>
+<ul>
+<li>Momentary loudness covers the last 400 ms and short-term loudness the last 3 s. The chart reads both every 100 ms, and short-term loudness starts at 3 s.</li>
+<li>Integrated loudness leaves out the blocks below -70 LUFS, then the blocks more than 10 LU below the average of the rest. That second limit is the relative gate.</li>
+<li>Loudness range is the spread of the short-term loudness, as EBU Tech 3342 defines it. It reads 0 LU when too few blocks pass the gate, which is the case for audio shorter than 3 s.</li>
+<li>True peak is the highest value the waveform reaches between the samples, found by oversampling.</li>
+</ul>
+<h2>3. Gain to a target</h2>
+<p>R128Net measures and never changes the audio. The gain below is the target minus the integrated loudness. This page applies it to a copy, rounds the copy to 16 bits and measures the copy again.</p>
+<p><label>Preset: <select id="preset" disabled>
+<option value="-23" selected>-23 LUFS: EBU R128 broadcast</option>
+<option value="-24">-24 LUFS: ATSC A/85 broadcast</option>
+<option value="-16">-16 LUFS: common for podcasts</option>
+<option value="-14">-14 LUFS: common for music streaming</option>
+<option value="custom">Custom</option>
+</select></label></p>
+<p><label>Target: <input id="target" type="range" min="-36" max="-6" step="0.5" value="-23" disabled> <output id="targetOut"></output></label></p>
+<p id="gainNote"></p>
+<audio id="normalized" controls hidden></audio>
+<p id="measuredNote"></p>
+<p id="warning"></p>
+<h2>4. Cost of each mode</h2>
+<p>Every mode costs processing time, so asking for only the modes you need is the simplest way to speed up a measurement. The button feeds the audio above to meters with six sets of modes and times each of them in this browser. It then checks how much managed memory the measurement allocates.</p>
+<p><button id="time" type="button" disabled>Time the modes</button></p>
+<table id="timing" hidden>
+<thead><tr><th>Modes</th><th>Time</th><th>Times real time</th></tr></thead>
+<tbody>
+<tr><th scope="row">Momentary</th><td id="time0"></td><td id="speed0"></td></tr>
+<tr><th scope="row">Integrated</th><td id="time1"></td><td id="speed1"></td></tr>
+<tr><th scope="row">Loudness range</th><td id="time2"></td><td id="speed2"></td></tr>
+<tr><th scope="row">Integrated and sample peak</th><td id="time3"></td><td id="speed3"></td></tr>
+<tr><th scope="row">Integrated and true peak</th><td id="time4"></td><td id="speed4"></td></tr>
+<tr><th scope="row">Every mode</th><td id="time5"></td><td id="speed5"></td></tr>
+</tbody>
+</table>
+<p id="allocation"></p>
+<h2>Notes</h2>
+<ul>
+<li>The first visit downloads about 3 MB, mostly the .NET runtime, and the page starts doing so as soon as it opens. The code is compiled ahead of time, so nothing is compiled while you wait. The next visit reuses what the browser has kept.</li>
+<li>The work runs in a Web Worker, so the page stays responsive while it measures.</li>
+<li>WebAssembly brings its own math library and its own vector instructions, so the times here are not those in the tables of the README, and the last digits of a result can differ from a native build. The native builds are the ones verified against the original.</li>
+</ul>
+</main>
+<script type="application/json" id="messages">{"loading": "Loading the .NET runtime: {loaded} MB", "loadingOf": "Loading the .NET runtime: {loaded} of {total} MB", "loadingAudio": "Loading the audio...", "decoding": "Decoding the audio...", "measuring": "Measuring...", "running": "Running...", "ready": "Ready.", "fail": "Failed: ", "unsupported": "This browser does not support the Web Worker and the streams this demo needs.", "truncated": "Only the first {s} seconds of the file are used.", "mono": "Mono", "stereo": "Stereo", "channels": "{n} channels", "audio": "{layout}, {rate} Hz, {seconds} s.", "audioBits": "{layout}, {rate} Hz, {bits}-bit, {seconds} s.", "measured": "Measured {seconds} s of audio in {t} ms, reading the momentary and short-term loudness every 100 ms.", "momentary": "Momentary", "shortTerm": "Short-term", "integrated": "Integrated", "chart": "chart", "secs": "s", "ms": "ms", "silent": "The audio is silent or entirely below the absolute gate, so it has no integrated loudness to bring to a target.", "gain": "Gain: {gain} dB. The highest true peak after the gain is {peak} dBTP.", "measuredAgain": "Measured again from the 16-bit copy below: {loudness} LUFS, true peak {peak} dBTP.", "peakWarning": "The true peak is above {limit} dBTP, the most that EBU R128 allows. A gain alone cannot fix that, and a true-peak limiter would be needed.", "clipped": "{n} samples were clipped in the copy, so it no longer measures what the gain promised.", "allocation": "Managed memory allocated while measuring: {bytes} bytes. The counter works here: it reported {calibration} bytes for an array allocated on purpose.", "allocationUnavailable": "This runtime does not report allocations, so the allocation could not be checked."}</script>
+<script type="module" src="demo.js"></script>
+</body>
+</html>
