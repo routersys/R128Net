@@ -1,0 +1,46 @@
+name: デモをビルド
+
+on:
+  push:
+    branches: ["site"]
+    paths:
+      - "demo-src/**"
+      - ".github/workflows/build-demo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build:
+    name: WebAssembly をビルド
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@v4
+
+      - name: .NET SDK をセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: wasm-tools ワークロードを導入
+        run: dotnet workload install wasm-tools
+
+      - name: デモをビルドして圧縮
+        run: sh demo-src/build.sh
+
+      - name: 出力の大きさを表示
+        run: ls -l docs/demo/_framework
+
+      - name: 出力をアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework
+          path: docs/demo/_framework
+          if-no-files-found: error
