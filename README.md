@@ -10,6 +10,7 @@ English | [日本語](https://github.com/routersys/R128Net/blob/main/README.ja.m
 
 A complete C# port of [libebur128](https://github.com/jiixyj/libebur128), the loudness measurement library implementing EBU R128 and ITU-R BS.1770 by Jan Kokemüller.
 Measurement runs without a single managed allocation, so the garbage collector never observes the analysis path.
+Try the [demo](https://lib.routersys.com/R128Net/demo/) in your browser. Nothing is installed and nothing is uploaded.
 All state comes from one native block, every hot routine is written with `unsafe` pointers, and the whole library is annotated for Native AOT.
 Correctness is not asserted from reading the source: every stage is compared against golden data produced by the original C compiled with MSVC.
 
