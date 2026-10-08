@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>R128Net: .NET向けEBU R128ラウドネス測定、原典のCより高速</title>
+<meta name="description" content="libebur128をC#へ移植した、.NET 10向けのライブラリです。瞬時、短期、統合のラウドネスと、ラウドネスレンジ、サンプルピーク、トゥルーピークを、原典のCより高速に、マネージドヒープを確保せずに測定します。">
+<link rel="canonical" href="https://lib.routersys.com/R128Net/ja/">
+<link rel="alternate" hreflang="en" href="https://lib.routersys.com/R128Net/">
+<link rel="alternate" hreflang="ja" href="https://lib.routersys.com/R128Net/ja/">
+<link rel="alternate" hreflang="x-default" href="https://lib.routersys.com/R128Net/">
+<link rel="icon" href="../icon.png" type="image/png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="R128Net">
+<meta property="og:title" content="R128Net: .NET向けEBU R128ラウドネス測定、原典のCより高速">
+<meta property="og:description" content="libebur128をC#へ移植した、.NET 10向けのライブラリです。瞬時、短期、統合のラウドネスと、ラウドネスレンジ、サンプルピーク、トゥルーピークを、原典のCより高速に、マネージドヒープを確保せずに測定します。">
+<meta property="og:url" content="https://lib.routersys.com/R128Net/ja/">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:locale:alternate" content="en_US">
+<style>body{max-width:44em;margin:1em auto;padding:0 1em;line-height:1.5}pre{overflow-x:auto}</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"R128Net","description":"libebur128をC#へ移植した、.NET 10向けのライブラリです。瞬時、短期、統合のラウドネスと、ラウドネスレンジ、サンプルピーク、トゥルーピークを、原典のCより高速に、マネージドヒープを確保せずに測定します。","programmingLanguage":"C#","runtimePlatform":".NET 10","license":"https://opensource.org/license/mit","codeRepository":"https://github.com/routersys/R128Net","url":"https://lib.routersys.com/R128Net/ja/","inLanguage":"ja"}</script>
+</head>
+<body>
+<header>
+<h1>R128Net</h1>
+<p>R128Netは、EBU R128とITU-R BS.1770のラウドネス測定を.NETで使えるようにしたライブラリです。原典のCより高速に動きます。<br>原典との照合を済ませており、マネージドヒープも確保しません。</p>
+<p><a href="demo/">ブラウザーで試せます</a>。導入は要らず、音声は外部へ送りません。</p>
+<nav>
+<a href="https://github.com/routersys/R128Net">GitHub</a> |
+<a href="https://www.nuget.org/packages/R128Net">NuGet</a> |
+<a href="https://github.com/routersys/R128Net/releases">リリース</a> |
+<a href="../" hreflang="en" lang="en">English</a>
+</nav>
+</header>
+<hr>
+<main>
+<h2>導入</h2>
+<pre>dotnet add package R128Net</pre>
+<h2>使い方</h2>
+<p>次のプログラムは、ステレオの1 kHzの正弦波（-23 dBFS）を20秒分、100ミリ秒ずつ測定器へ投入します。そのあと、統合ラウドネスとラウドネスレンジとトゥルーピークを読み出します。出力は、-23.0 LUFS、0.0 LU、-23.0 dBTPです。</p>
+<pre><code>using R128Net;
+
+const int SampleRate = 48000;
+const int BlockFrames = SampleRate / 10;
+
+using LoudnessMeter meter = new(channels: 2, SampleRate,
+    LoudnessModes.Integrated | LoudnessModes.LoudnessRange | LoudnessModes.TruePeak);
+
+float[] block = new float[2 * BlockFrames];
+for (int n = 0; n &lt; 200; ++n)
+{
+    for (int i = 0; i &lt; BlockFrames; ++i)
+    {
+        float value = (float)(0.0708 * Math.Sin(2.0 * Math.PI * 1000.0 * ((n * BlockFrames) + i) / SampleRate));
+        block[2 * i] = value;
+        block[(2 * i) + 1] = value;
+    }
+
+    meter.AddFrames(block);
+}
+
+Console.WriteLine($&quot;Integrated loudness: {meter.IntegratedLoudness:F1} LUFS&quot;);
+Console.WriteLine($&quot;Loudness range: {meter.LoudnessRange:F1} LU&quot;);
+Console.WriteLine($&quot;True peak: {20.0 * Math.Log10(meter.GetTruePeak(0)):F1} dBTP&quot;);</code></pre>
+<h2>できること</h2>
+<ul>
+<li>瞬時、短期、統合のラウドネス。EBU R128とITU-R BS.1770の定義に従います。</li>
+<li>ラウドネスレンジ。EBU Tech 3342の定義に従います。</li>
+<li>相対閾値と、設定した最大の窓までの、任意の窓のラウドネス。</li>
+<li>サンプルピークとトゥルーピーク。</li>
+<li>ヒストグラムアルゴリズムと、複数の測定器を一つの値へ集約する機能。</li>
+<li>16ビット整数、32ビット整数、単精度、倍精度の入力。</li>
+</ul>
+<h2>特長</h2>
+<ul>
+<li>計測したどのモードも、原典のCより高速です。表は、説明書の<a href="https://github.com/routersys/R128Net/blob/main/README.ja.md#7-%E6%80%A7%E8%83%BD">性能の節</a>にあります。</li>
+<li>マネージドヒープを確保しません。ガベージコレクションが、測定の経路を目にすることはありません。</li>
+<li>MSVCでビルドした原典と照合しています。テストでは、ラウドネスとピークが原典とビット単位で一致します。</li>
+<li>.NET 10で、WindowsとLinuxのx64とARM64でテストしています。Native AOTにも対応し、同梱するネイティブライブラリはありません。</li>
+</ul>
+<h2>リンク</h2>
+<ul>
+<li><a href="https://github.com/routersys/R128Net/blob/main/README.ja.md">説明書</a>: 動作要件、APIリファレンス、制限事項。</li>
+<li><a href="https://www.nuget.org/packages/R128Net">NuGetのパッケージ</a></li>
+<li><a href="https://github.com/routersys/R128Net/releases">リリース</a></li>
+<li><a href="https://github.com/jiixyj/libebur128">libebur128</a>: Jan Kokemüller氏による原典です。</li>
+</ul>
+</main>
+<hr>
+<footer>
+<p>R128Netは、<a href="https://github.com/routersys/R128Net/blob/main/LICENSE.txt">MITライセンス</a>で公開しています。libebur128については、<a href="https://github.com/routersys/R128Net/blob/main/README.ja.md#%E3%82%B5%E3%83%BC%E3%83%89%E3%83%91%E3%83%BC%E3%83%86%E3%82%A3%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9">サードパーティライセンス</a>を参照してください。</p>
+</footer>
+</body>
+</html>
