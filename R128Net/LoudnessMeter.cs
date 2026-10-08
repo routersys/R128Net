@@ -827,8 +827,7 @@ public sealed unsafe class LoudnessMeter : IDisposable
             }
         }
 
-        Span<double> span = new(values, (int)total);
-        span.Sort();
+        LoudnessMath.SortAscending(values, total);
 
         double power = 0.0;
         for (nuint i = 0; i < total; ++i)
