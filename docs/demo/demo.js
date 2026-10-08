@@ -71,7 +71,10 @@ const fmt = (value, digits = 1) => {
   if (!Number.isFinite(value)) return value < 0 ? "-∞" : "∞";
   return value.toFixed(digits);
 };
-const signed = (value) => (value > 0 ? "+" : "") + fmt(value);
+const signed = (value) => {
+  const rounded = Math.round(value * 10) / 10;
+  return (rounded > 0 ? "+" : "") + fmt(rounded === 0 ? 0 : rounded);
+};
 
 const setSource = (id, source) => {
   const audio = $(id);
