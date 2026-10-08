@@ -44,3 +44,4 @@ jobs:
           name: framework
           path: docs/demo/_framework
           if-no-files-found: error
+          retention-days: 7
