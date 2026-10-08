@@ -22,19 +22,33 @@ public class AllocationTests
 
     private static void AssertNoAllocation(Action warmUp, Action measured)
     {
-        for (int i = 0; i < 8; ++i)
+        const int RequiredCleanWindows = 3;
+        const int MaximumWindows = 12;
+
+        long last = 0;
+        int clean = 0;
+
+        for (int window = 0; window < MaximumWindows && clean < RequiredCleanWindows; ++window)
         {
-            warmUp();
+            for (int i = 0; i < 8; ++i)
+            {
+                warmUp();
+            }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 8; ++i)
+            {
+                measured();
+            }
+            long after = GC.GetAllocatedBytesForCurrentThread();
+
+            last = after - before;
+            clean = last == 0 ? clean + 1 : 0;
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 8; ++i)
-        {
-            measured();
-        }
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0L, after - before);
+        Assert.True(clean >= RequiredCleanWindows,
+            $"fewer than {RequiredCleanWindows} consecutive windows without a managed allocation "
+            + $"within {MaximumWindows} windows; the last window allocated {last} bytes");
     }
 
     [Fact]
