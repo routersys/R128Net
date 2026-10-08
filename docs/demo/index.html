@@ -99,7 +99,7 @@
 <p id="allocation"></p>
 <h2>Notes</h2>
 <ul>
-<li>The first visit downloads about 3 MB, mostly the .NET runtime, and the page starts doing so as soon as it opens. The code is compiled ahead of time, so nothing is compiled while you wait. The next visit reuses what the browser has kept.</li>
+<li>The first visit downloads about 2.2 MB, mostly the .NET runtime, and the page starts doing so as soon as it opens. The code is compiled ahead of time, so nothing is compiled while you wait. The next visit reuses what the browser has kept.</li>
 <li>The work runs in a Web Worker, so the page stays responsive while it measures.</li>
 <li>The check runs the measurement once before it counts, because the WebAssembly runtime allocates a few kilobytes of its own the first times some of its code runs.</li>
 <li>WebAssembly brings its own math library and its own vector instructions, so the times here are not those in the tables of the README, and the last digits of a result can differ from a native build. The native builds are the ones verified against the original.</li>
