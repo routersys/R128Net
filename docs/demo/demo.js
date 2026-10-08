@@ -71,6 +71,7 @@ const fmt = (value, digits = 1) => {
   if (!Number.isFinite(value)) return value < 0 ? "-∞" : "∞";
   return value.toFixed(digits);
 };
+const withUnit = (value, unit) => (Number.isNaN(value) ? fmt(value) : fmt(value) + " " + unit);
 const signed = (value) => {
   const rounded = Math.round(value * 10) / 10;
   return (rounded > 0 ? "+" : "") + fmt(rounded === 0 ? 0 : rounded);
@@ -108,8 +109,8 @@ const showResults = () => {
   $("integrated").textContent = fmt(report[0]) + " LUFS";
   $("range").textContent = fmt(report[1]) + " LU";
   $("gate").textContent = fmt(report[2]) + " LUFS";
-  $("momentaryMax").textContent = fmt(report[3]) + " LUFS";
-  $("shortMax").textContent = fmt(report[4]) + " LUFS";
+  $("momentaryMax").textContent = withUnit(report[3], "LUFS");
+  $("shortMax").textContent = withUnit(report[4], "LUFS");
   $("samplePeak").textContent = peaks(8) + " dBFS";
   $("truePeak").textContent = peaks(8 + channels) + " dBTP";
   $("measureNote").textContent = fill(M.measured, { seconds: (info.frames / info.rate).toFixed(1), t: report[5].toFixed(0) });
