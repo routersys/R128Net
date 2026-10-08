@@ -137,7 +137,7 @@ Those figures hold for eight configurations: stereo, five-channel surround, dual
 
 The transcendental functions are measured separately. `Math.Tan` and `Math.Log` return exactly the same doubles as the MSVC runtime over 20000 sampled arguments each. `Math.Pow` differs by at most one unit in the last place on fewer than one in a thousand of the sampled inputs, which is why the histogram boundary table is embedded rather than computed.
 
-The suite contains 270 tests and all of them pass. Beyond the comparison against the original, they cover the disposal and mode contract of every public member, the validation of every argument, the requirement that a meter which has been reset produce results identical to a freshly constructed one across all of the configurations above, and the agreement of every fast path with a plain reference implementation.
+The suite contains 274 tests and all of them pass. Beyond the comparison against the original, they cover the disposal and mode contract of every public member, the validation of every argument, the requirement that a meter which has been reset produce results identical to a freshly constructed one across all of the configurations above, and the agreement of every fast path with a plain reference implementation.
 
 ### 7. Performance
 
