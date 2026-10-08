@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>R128Netのデモ: ブラウザーでラウドネスを測定</title>
+<meta name="description" content="R128NetをWebAssemblyとしてブラウザーで動かし、テスト用の信号や手元の音声のラウドネスを測定できます。瞬時と短期のラウドネスの推移を見たり、目標に合わせるゲインを求めたり、モードごとの費用を計ったりできます。音声は外部へ送りません。">
+<link rel="canonical" href="https://lib.routersys.com/R128Net/ja/demo/">
+<link rel="alternate" hreflang="en" href="https://lib.routersys.com/R128Net/demo/">
+<link rel="alternate" hreflang="ja" href="https://lib.routersys.com/R128Net/ja/demo/">
+<link rel="alternate" hreflang="x-default" href="https://lib.routersys.com/R128Net/demo/">
+<link rel="icon" href="../../icon.png" type="image/png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="R128Net">
+<meta property="og:title" content="R128Netのデモ: ブラウザーでラウドネスを測定">
+<meta property="og:description" content="R128NetをWebAssemblyとしてブラウザーで動かし、テスト用の信号や手元の音声のラウドネスを測定できます。瞬時と短期のラウドネスの推移を見たり、目標に合わせるゲインを求めたり、モードごとの費用を計ったりできます。音声は外部へ送りません。">
+<meta property="og:url" content="https://lib.routersys.com/R128Net/ja/demo/">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:locale:alternate" content="en_US">
+<style>body{max-width:44em;margin:1em auto;padding:0 1em;line-height:1.5}audio,svg{max-width:100%}table{border-collapse:collapse}th,td{border:1px solid;padding:.1em .6em}th{text-align:left}td{text-align:right}</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "R128Netのデモ: ブラウザーでラウドネスを測定", "description": "R128NetをWebAssemblyとしてブラウザーで動かし、テスト用の信号や手元の音声のラウドネスを測定できます。瞬時と短期のラウドネスの推移を見たり、目標に合わせるゲインを求めたり、モードごとの費用を計ったりできます。音声は外部へ送りません。", "url": "https://lib.routersys.com/R128Net/ja/demo/", "inLanguage": "ja", "isPartOf": {"@type": "WebSite", "name": "R128Net", "url": "https://lib.routersys.com/R128Net/"}}</script>
+</head>
+<body>
+<header>
+<h1>R128Netのデモ</h1>
+<nav><a href="../../">ホーム</a> | <a href="https://github.com/routersys/R128Net">GitHub</a> | <a href="../../demo/" hreflang="en" lang="en">English</a></nav>
+</header>
+<hr>
+<main>
+<p>このページは、R128NetをWebAssemblyとして、ブラウザーの中で動かします。音声は外部へ送りません。1番で選んだ音声を、放送用のラウドネスメーターと同じ方法で測定します。そのうえで、目標のラウドネスに合わせるゲインを求め、結果をもう一度測定します。</p>
+<p id="status" role="status"></p>
+<h2>1. 音声</h2>
+<p><label>音源: <select id="source" disabled>
+<option value="0" selected>テスト用の番組: ラウドネスの異なる4つの区間（40秒）</option>
+<option value="1">1 kHzの正弦波、-23 dBFS（20秒）</option>
+<option value="2">標本の間にピークがある12 kHzの正弦波（10秒）</option>
+<option value="3">声: 一文（2秒）</option>
+</select></label></p>
+<audio id="original" controls hidden></audio>
+<p id="sampleNote" data-src="../../demo/LJ016-0230.wav" hidden>音声: Linda Johnson氏がLibriVox向けに録音したもので、Keith Ito氏の<a href="https://keithito.com/LJ-Speech-Dataset/">LJ Speech Dataset</a>から引用しています。このデータセットはパブリックドメインです。</p>
+<p><label>自分の音声を試す: <input id="file" type="file" accept="audio/*" disabled></label></p>
+<p>ファイルはブラウザーの外へ出ません。WAVファイルはそのまま読み込みます。ほかの形式は、ブラウザーが復号し、可能なら48 kHzにします。使うのは最初の120秒だけです。</p>
+<p id="audioInfo"></p>
+<ul>
+<li>テスト用の番組は、ブラウザーの中で生成します。静かな和音、拍を伴う大きな和音、ほぼ無音の区間、中くらいの大きさの和音が続きます。ほぼ無音の区間は絶対ゲートの下、静かな和音は相対ゲートの下にあるため、どちらも統合ラウドネスには数えません。</li>
+<li>1 kHzの正弦波は、-23.0 LUFSと測定されます。ピークは、両方のチャネルで-23 dBFSです。</li>
+<li>12 kHzの正弦波は、どの標本も波の頂点に当たらないように、48 kHzで標本化してあります。最大の標本は、2つの標本の間にある波形の実際のピークより3 dB低くなります。サンプルピークは前者を、トゥルーピークは後者を示します。</li>
+</ul>
+<h2>2. ラウドネス</h2>
+<table>
+<thead><tr><th>項目</th><th>値</th></tr></thead>
+<tbody>
+<tr><th scope="row">統合ラウドネス</th><td id="integrated"></td></tr>
+<tr><th scope="row">ラウドネスレンジ</th><td id="range"></td></tr>
+<tr><th scope="row">相対ゲート</th><td id="gate"></td></tr>
+<tr><th scope="row">瞬時ラウドネスの最大</th><td id="momentaryMax"></td></tr>
+<tr><th scope="row">短期ラウドネスの最大</th><td id="shortMax"></td></tr>
+<tr><th scope="row">サンプルピーク、チャネルごと</th><td id="samplePeak"></td></tr>
+<tr><th scope="row">トゥルーピーク、チャネルごと</th><td id="truePeak"></td></tr>
+</tbody>
+</table>
+<p id="measureNote"></p>
+<div id="timeline"></div>
+<ul>
+<li>瞬時ラウドネスは直近400ミリ秒を、短期ラウドネスは直近3秒を対象とします。図は、どちらも100ミリ秒ごとに読み出しています。短期ラウドネスは、3秒の時点から始まります。</li>
+<li>統合ラウドネスは、まず-70 LUFSを下回るブロックを除き、次に、残りの平均より10 LUを超えて低いブロックを除きます。この2つ目の限界が相対ゲートです。</li>
+<li>ラウドネスレンジは、EBU Tech 3342の定義による、短期ラウドネスの広がりです。ゲートを通るブロックが少なすぎると0 LUになり、3秒より短い音声がこれに当たります。</li>
+<li>トゥルーピークは、標本の間で波形が達する最大の値で、過標本化して求めます。</li>
+</ul>
+<h2>3. 目標へ合わせるゲイン</h2>
+<p>R128Netは測定だけを行い、音声は変えません。下のゲインは、目標から統合ラウドネスを引いた値です。このページは、そのゲインを複製に掛け、複製を16ビットに丸めて、もう一度測定します。</p>
+<p><label>プリセット: <select id="preset" disabled>
+<option value="-23" selected>-23 LUFS: EBU R128の放送</option>
+<option value="-24">-24 LUFS: ATSC A/85の放送</option>
+<option value="-16">-16 LUFS: ポッドキャストでよく使う値</option>
+<option value="-14">-14 LUFS: 音楽配信でよく使う値</option>
+<option value="custom">任意</option>
+</select></label></p>
+<p><label>目標: <input id="target" type="range" min="-36" max="-6" step="0.5" value="-23" disabled> <output id="targetOut"></output></label></p>
+<p id="gainNote"></p>
+<audio id="normalized" controls hidden></audio>
+<p id="measuredNote"></p>
+<p id="warning"></p>
+<h2>4. モードごとの費用</h2>
+<p>モードごとに処理時間がかかるため、必要なモードだけを指定するのが、測定を速くするいちばん簡単な方法です。ボタンを押すと、上の音声を6通りのモードの集合で測定器へ投入し、このブラウザーでそれぞれの時間を測ります。そのあと、測定中に確保するマネージドメモリの量も確かめます。</p>
+<p><button id="time" type="button" disabled>モードの時間を測る</button></p>
+<table id="timing" hidden>
+<thead><tr><th>モードの集合</th><th>時間</th><th>実時間の倍率</th></tr></thead>
+<tbody>
+<tr><th scope="row">瞬時</th><td id="time0"></td><td id="speed0"></td></tr>
+<tr><th scope="row">統合</th><td id="time1"></td><td id="speed1"></td></tr>
+<tr><th scope="row">ラウドネスレンジ</th><td id="time2"></td><td id="speed2"></td></tr>
+<tr><th scope="row">統合とサンプルピーク</th><td id="time3"></td><td id="speed3"></td></tr>
+<tr><th scope="row">統合とトゥルーピーク</th><td id="time4"></td><td id="speed4"></td></tr>
+<tr><th scope="row">すべてのモード</th><td id="time5"></td><td id="speed5"></td></tr>
+</tbody>
+</table>
+<p id="allocation"></p>
+<h2>補足</h2>
+<ul>
+<li>初回は、主に.NETの実行環境で約3 MBを読み込みます。ページを開いた時点で読み込みを始めます。コードは事前にコンパイルしてあるため、待っている間のコンパイルはありません。2回目からは、ブラウザーが保存したものを使います。</li>
+<li>処理はWeb Workerの中で動くため、測定の間もページは操作できます。</li>
+<li>WebAssemblyは独自の数学ライブラリとベクトル命令を持つため、ここでの時間はREADMEの表の値とは異なります。結果の最後の桁も、ネイティブのビルドと異なることがあります。原典との照合を済ませているのは、ネイティブのビルドです。</li>
+</ul>
+</main>
+<script type="application/json" id="messages">{"loading": "実行環境を読み込んでいます: {loaded} MB", "loadingOf": "実行環境を読み込んでいます: {total} MBのうち{loaded} MB", "loadingAudio": "音声を読み込んでいます...", "decoding": "音声を復号しています...", "measuring": "測定しています...", "running": "実行しています...", "ready": "準備ができました。", "fail": "失敗しました: ", "unsupported": "このブラウザーは、デモに必要なWeb Workerとストリームに対応していません。", "truncated": "ファイルのうち、最初の{s}秒だけを使います。", "mono": "モノラル", "stereo": "ステレオ", "channels": "{n}チャネル", "audio": "{layout}、{rate} Hz、{seconds}秒。", "audioBits": "{layout}、{rate} Hz、{bits}ビット、{seconds}秒。", "measured": "{seconds}秒の音声を{t}ミリ秒で測定しました。瞬時ラウドネスと短期ラウドネスは、100ミリ秒ごとに読み出しています。", "momentary": "瞬時", "shortTerm": "短期", "integrated": "統合", "chart": "図", "secs": "秒", "ms": "ミリ秒", "silent": "音声が無音か、すべて絶対ゲートの下にあるため、目標に合わせる統合ラウドネスがありません。", "gain": "ゲイン: {gain} dB。ゲインを掛けた後の最大のトゥルーピークは{peak} dBTPです。", "measuredAgain": "下の16ビットの複製をもう一度測定した値: {loudness} LUFS、トゥルーピーク{peak} dBTP。", "peakWarning": "トゥルーピークが、EBU R128の上限である{limit} dBTPを超えています。ゲインだけでは直せず、トゥルーピークリミッターが必要です。", "clipped": "複製で{n}個の標本がクリップしたため、ゲインが約束した値では測れません。", "allocation": "測定中に確保したマネージドメモリ: {bytes}バイト。ここでは計数器が正しく動いています。意図して確保した配列では、{calibration}バイトを報告しました。", "allocationUnavailable": "この実行環境は確保量を報告しないため、確保を確かめられませんでした。"}</script>
+<script type="module" src="../../demo/demo.js"></script>
+</body>
+</html>
