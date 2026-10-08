@@ -160,8 +160,8 @@ public sealed class Session
         int frames = Frames;
         int steps = (frames + stepFrames - 1) / stepFrames;
         double[] timeline = new double[steps * 2];
-        double highestMomentary = double.NegativeInfinity;
-        double highestShortTerm = double.NegativeInfinity;
+        double highestMomentary = double.NaN;
+        double highestShortTerm = double.NaN;
 
         using LoudnessMeter meter = new(_channels, _rate, LoudnessModes.All);
         Stopwatch watch = Stopwatch.StartNew();
@@ -176,12 +176,12 @@ public sealed class Session
             double shortTerm = fed >= ShortTermSeconds ? meter.ShortTermLoudness : double.NaN;
             timeline[step * 2] = momentary;
             timeline[(step * 2) + 1] = shortTerm;
-            if (momentary > highestMomentary)
+            if (!double.IsNaN(momentary) && !(highestMomentary >= momentary))
             {
                 highestMomentary = momentary;
             }
 
-            if (shortTerm > highestShortTerm)
+            if (!double.IsNaN(shortTerm) && !(highestShortTerm >= shortTerm))
             {
                 highestShortTerm = shortTerm;
             }
