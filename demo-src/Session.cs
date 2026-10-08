@@ -13,6 +13,7 @@ public sealed class Session
     private const double MomentarySeconds = 0.4;
     private const double ShortTermSeconds = 3.0;
     private const int WaveHeaderLength = 44;
+    private const int WarmUpQueries = 300;
 
     private static readonly LoudnessModes[] ModeSets =
     [
@@ -244,6 +245,13 @@ public sealed class Session
         GC.KeepAlive(probe);
         long calibration = GC.GetAllocatedBytesForCurrentThread() - start;
 
+        CountedPass(true);
+        long measured = CountedPass(false);
+        return [calibration, measured, Frames];
+    }
+
+    private long CountedPass(bool warmUp)
+    {
         int stepFrames = _rate / StepsPerSecond;
         int frames = Frames;
         using LoudnessMeter meter = new(_channels, _rate, LoudnessModes.All);
@@ -259,7 +267,12 @@ public sealed class Session
             sink += meter.MomentaryLoudness + meter.ShortTermLoudness;
         }
 
-        sink += meter.IntegratedLoudness + meter.LoudnessRange + meter.RelativeThreshold;
+        sink += meter.IntegratedLoudness + meter.RelativeThreshold;
+        for (int i = 0; i < (warmUp ? WarmUpQueries : 1); ++i)
+        {
+            sink += meter.LoudnessRange;
+        }
+
         for (int c = 0; c < _channels; ++c)
         {
             sink += meter.GetSamplePeak(c) + meter.GetTruePeak(c);
@@ -267,7 +280,7 @@ public sealed class Session
 
         long measured = GC.GetAllocatedBytesForCurrentThread() - before;
         s_sink = sink;
-        return [calibration, measured, frames];
+        return measured;
     }
 
     public byte[] RenderOriginal()
