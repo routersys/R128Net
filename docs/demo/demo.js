@@ -163,7 +163,7 @@ const drawTimeline = () => {
     + grid + body + legend
     + '<text x="' + left + '" y="' + (h - 5) + '">0 ' + M.secs + "</text>"
     + '<text x="' + (w - right) + '" y="' + (h - 5) + '" text-anchor="end">' + (steps * stepSeconds).toFixed(1) + " " + M.secs + "</text>"
-    + '<text x="4" y="' + (top + 4) + '">LUFS</text></svg>';
+    + '<text x="' + (w - right) + '" y="13" text-anchor="end">LUFS</text></svg>';
 };
 
 const measure = async () => {
