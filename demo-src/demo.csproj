@@ -13,6 +13,6 @@
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="R128Net" Version="1.1.1" />
+    <PackageReference Include="R128Net" Version="1.1.2" />
   </ItemGroup>
 </Project>
