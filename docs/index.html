@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>R128Net: EBU R128 loudness measurement for .NET, faster than C</title>
+<meta name="description" content="A C# port of libebur128 for .NET 10. Momentary, short-term and integrated loudness, loudness range, sample peak and true peak, verified against the original C, with no managed allocation.">
+<link rel="canonical" href="https://lib.routersys.com/R128Net/">
+<link rel="alternate" hreflang="en" href="https://lib.routersys.com/R128Net/">
+<link rel="alternate" hreflang="ja" href="https://lib.routersys.com/R128Net/ja/">
+<link rel="alternate" hreflang="x-default" href="https://lib.routersys.com/R128Net/">
+<link rel="icon" href="icon.png" type="image/png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="R128Net">
+<meta property="og:title" content="R128Net: EBU R128 loudness measurement for .NET, faster than C">
+<meta property="og:description" content="A C# port of libebur128 for .NET 10. Momentary, short-term and integrated loudness, loudness range, sample peak and true peak, verified against the original C, with no managed allocation.">
+<meta property="og:url" content="https://lib.routersys.com/R128Net/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<style>body{max-width:44em;margin:1em auto;padding:0 1em;line-height:1.5}pre{overflow-x:auto}</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"R128Net","description":"A C# port of libebur128 for .NET 10. Momentary, short-term and integrated loudness, loudness range, sample peak and true peak, verified against the original C, with no managed allocation.","programmingLanguage":"C#","runtimePlatform":".NET 10","license":"https://opensource.org/license/mit","codeRepository":"https://github.com/routersys/R128Net","url":"https://lib.routersys.com/R128Net/","inLanguage":"en"}</script>
+</head>
+<body>
+<header>
+<h1>R128Net</h1>
+<p>R128Net brings EBU R128 and ITU-R BS.1770 loudness measurement to .NET, faster than the original C.<br>It is verified against the original and performs no managed allocation.</p>
+<p><a href="demo/">Try it in your browser</a>. Nothing to install, nothing uploaded.</p>
+<nav>
+<a href="https://github.com/routersys/R128Net">GitHub</a> |
+<a href="https://www.nuget.org/packages/R128Net">NuGet</a> |
+<a href="https://github.com/routersys/R128Net/releases">Releases</a> |
+<a href="ja/" hreflang="ja" lang="ja">日本語</a>
+</nav>
+</header>
+<hr>
+<main>
+<h2>Install</h2>
+<pre>dotnet add package R128Net</pre>
+<h2>Use</h2>
+<p>This program feeds 20 seconds of a stereo 1 kHz sine at -23 dBFS to a meter in blocks of 100 ms, then reads the integrated loudness, the loudness range and the true peak. It prints -23.0 LUFS, 0.0 LU and -23.0 dBTP.</p>
+<pre><code>using R128Net;
+
+const int SampleRate = 48000;
+const int BlockFrames = SampleRate / 10;
+
+using LoudnessMeter meter = new(channels: 2, SampleRate,
+    LoudnessModes.Integrated | LoudnessModes.LoudnessRange | LoudnessModes.TruePeak);
+
+float[] block = new float[2 * BlockFrames];
+for (int n = 0; n &lt; 200; ++n)
+{
+    for (int i = 0; i &lt; BlockFrames; ++i)
+    {
+        float value = (float)(0.0708 * Math.Sin(2.0 * Math.PI * 1000.0 * ((n * BlockFrames) + i) / SampleRate));
+        block[2 * i] = value;
+        block[(2 * i) + 1] = value;
+    }
+
+    meter.AddFrames(block);
+}
+
+Console.WriteLine($&quot;Integrated loudness: {meter.IntegratedLoudness:F1} LUFS&quot;);
+Console.WriteLine($&quot;Loudness range: {meter.LoudnessRange:F1} LU&quot;);
+Console.WriteLine($&quot;True peak: {20.0 * Math.Log10(meter.GetTruePeak(0)):F1} dBTP&quot;);</code></pre>
+<h2>What it does</h2>
+<ul>
+<li>Momentary, short-term and integrated loudness, as EBU R128 and ITU-R BS.1770 define them.</li>
+<li>Loudness range, as EBU Tech 3342 defines it.</li>
+<li>The relative threshold, and the loudness over any window up to a maximum you set.</li>
+<li>Sample peak and true peak.</li>
+<li>The histogram algorithm, and the aggregation of several meters into a single figure.</li>
+<li>Input as 16-bit integers, 32-bit integers, single precision and double precision.</li>
+</ul>
+<h2>Why R128Net</h2>
+<ul>
+<li>Faster than the original C in every mode measured. The tables are in the <a href="https://github.com/routersys/R128Net#7-performance">performance section</a> of the README.</li>
+<li>No managed allocation. The garbage collector never observes the measurement path.</li>
+<li>Verified against the original built with MSVC. In the test suite the loudness and the peaks match the original to the bit.</li>
+<li>.NET 10, tested on x64 and ARM64, Windows and Linux. Native AOT ready. No native library to ship.</li>
+</ul>
+<h2>Links</h2>
+<ul>
+<li><a href="https://github.com/routersys/R128Net#readme">README</a>: requirements, API reference, limitations.</li>
+<li><a href="https://www.nuget.org/packages/R128Net">NuGet package</a></li>
+<li><a href="https://github.com/routersys/R128Net/releases">Releases</a></li>
+<li><a href="https://github.com/jiixyj/libebur128">libebur128</a>, the original by Jan Kokemüller.</li>
+</ul>
+</main>
+<hr>
+<footer>
+<p>R128Net is released under the <a href="https://github.com/routersys/R128Net/blob/main/LICENSE.txt">MIT License</a>. See the <a href="https://github.com/routersys/R128Net#third-party-licenses">third-party licenses</a> for libebur128.</p>
+</footer>
+</body>
+</html>
