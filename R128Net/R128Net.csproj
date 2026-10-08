@@ -9,7 +9,7 @@
 
   <PropertyGroup>
     <PackageId>R128Net</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Authors>routersys</Authors>
     <Product>R128Net</Product>
     <Title>R128Net</Title>
